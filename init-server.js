@@ -5,9 +5,7 @@ const rateLimit = require("@fastify/rate-limit");
 const fastify = Fastify();
 
 // Register CORS
-fastify.register(cors, {
-  origin: true, // or set specific domain
-});
+await fastify.register(corsPlugin);
 
 // Register rate limit
 fastify.register(rateLimit, {
