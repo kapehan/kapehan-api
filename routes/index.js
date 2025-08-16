@@ -16,13 +16,18 @@ async function loadRoutesRecursively(dir, app) {
     ) {
       const routeModule = require(fullPath)
       const route = routeModule.default || routeModule
-
-    for(let key in route){
-        const read_route = route[key];
-        if (typeof  read_route === 'function') {
-            await read_route(app)
+    
+        if(typeof route === 'function'){
+            await route(app);
+            continue;
         }
-    }
+
+        for(let key in route){
+            const read_route = route[key];
+            if (typeof  read_route === 'function') {
+                await read_route(app)
+            }
+        }
     }
   }
 }
