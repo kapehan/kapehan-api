@@ -1,20 +1,25 @@
 const Fastify = require("fastify");
-const cors = require("@fastify/cors");
+const corsPlugin = require("./configs/cors.config");
 const rateLimit = require("@fastify/rate-limit");
-
 const fastify = Fastify();
 
-// Register CORS
-await fastify.register(corsPlugin);
+async function start() {
+  await fastify.register(corsPlugin);
 
-// Register rate limit
-fastify.register(rateLimit, {
-  max: 100, // max requests
-  timeWindow: "1 minute",
-});
+  fastify.register(rateLimit, {
+    max: 100,
+    timeWindow: "1 minute",
+  });
 
-fastify.register(require("./routes/"));
+  fastify.register(require("./routes/"), { prefix: "/v1" });
 
+  try {
+    await fastify.listen({ port: 3000 });
+    console.log("Server listening on http://localhost:3000");
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+}
 
-fastify.listen({ port: 3000 });
-  console.log('Server listening on http://localhost:3000')
+start();
