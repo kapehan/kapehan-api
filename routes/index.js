@@ -1,7 +1,11 @@
 const fs = require("fs");
 const path = require("path");
-const fp = require("fastify-plugin");
 
+/**
+ * Recursively load all .route.js files in a directory
+ * @param {string} dir - Directory to scan
+ * @param {FastifyInstance} fastify - Fastify instance
+ */
 async function loadRoutesRecursively(dir, fastify) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
@@ -10,23 +14,26 @@ async function loadRoutesRecursively(dir, fastify) {
 
     if (entry.isDirectory()) {
       await loadRoutesRecursively(fullPath, fastify);
-    } else if (entry.isFile() && entry.name.endsWith(".route.js") && entry.name !== "index.js") {
-      delete require.cache[require.resolve(fullPath)];
-      const routeModule = require(fullPath);
-      const route = routeModule.default || routeModule;
+    } else if (entry.isFile() && entry.name.endsWith(".route.js")) {
+      console.log("📂 Loading route file:", fullPath);
 
-      if (typeof route === "function") {
-        await route(fastify);
-      } else if (typeof route === "object") {
-        for (let key in route) {
-          const fn = route[key];
-          if (typeof fn === "function") await fn(fastify);
-        }
+      // Require the route module
+      const routeModule = require(fullPath);
+
+      // If the module exports a function, register it
+      if (typeof routeModule === "function") {
+        console.log(`➡️ Registering route from ${entry.name}`);
+        await routeModule(fastify);
+      } else {
+        console.warn(`⚠️ Skipping ${entry.name}, it does not export a function`);
       }
     }
   }
 }
 
-module.exports = fp(async function (fastify, opts) {
+// Export the main loader function
+module.exports = async function (fastify) {
+  console.log("🚀 Starting to load routes...");
   await loadRoutesRecursively(__dirname, fastify);
-});
+  console.log("✅ Finished loading all routes");
+};
