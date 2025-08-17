@@ -13,9 +13,11 @@ async function createServer() {
       max: 100,
       timeWindow: "1 minute",
     });
-    fastify.register(require("./routes/"), { prefix: "/v1" });
+
+    await fastify.register(require("./routes/"), { prefix: "/v1" });
 
     await fastify.ready();
+    fastify.log.info("Fastify server built successfully");
     return fastify;
   } catch (err) {
     fastify.log.error("Error building Fastify server:", err);
@@ -23,6 +25,7 @@ async function createServer() {
   }
 }
 
+// Local development
 if (!process.env.VERCEL) {
   createServer()
     .then((server) => {
@@ -35,11 +38,12 @@ if (!process.env.VERCEL) {
       });
     })
     .catch((err) => {
-      console.error("Failed to start local server: ", err);
+      console.error("Failed to start local server:", err);
       process.exit(1);
     });
 }
 
+// Vercel serverless handler
 module.exports = async (req, res) => {
   try {
     if (!cachedServer) {

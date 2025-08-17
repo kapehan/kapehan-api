@@ -16,25 +16,23 @@ async function loadRoutesRecursively(dir, app) {
     ) {
       console.log("📂 Loading route file:", fullPath);
 
+      delete require.cache[require.resolve(fullPath)];
       const routeModule = require(fullPath);
       const route = routeModule.default || routeModule;
 
       if (typeof route === "function") {
-        // directly export function
         await route(app);
       } else if (typeof route === "object") {
-        // object of functions
         for (let key in route) {
-          const read_route = route[key];
-          if (typeof read_route === "function") {
-            await read_route(app);
-          }
+          const fn = route[key];
+          if (typeof fn === "function") await fn(app);
         }
       }
     }
   }
 }
 
-module.exports = async function (app, opts) {
+module.exports = async function (app) {
   await loadRoutesRecursively(__dirname, app);
+  console.log("✅ All routes loaded");
 };
