@@ -4,9 +4,9 @@
   "description": "the official api of kapehan platform",
   "main": "init-server.js",
   "scripts": {
-  "dev": "nodemon init-server.js",
-  "start": "node init-server.js",
-  "build": "echo \"No build step required for Fastify\""
+    "dev": "nodemon init-server.js",
+    "start": "nodemon init-server.js",
+    "build": "echo \"No build step required for Fastify\""
   },
   "repository": {
     "type": "git",
@@ -27,6 +27,9 @@
     "@fastify/rate-limit": "^10.3.0",
     "dotenv": "^17.2.1",
     "fastify": "^5.5.0",
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "supabase": "^2.34.3",
+    "@supabase/supabase-js": "^2.53.0"
+
   }
 }
