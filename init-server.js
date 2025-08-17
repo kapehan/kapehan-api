@@ -35,7 +35,7 @@ if (!process.env.VERCEL) {
       });
     })
     .catch((err) => {
-      console.error("Failed to start local server:", err);
+      console.error("Failed to start local server: ", err);
       process.exit(1);
     });
 }
