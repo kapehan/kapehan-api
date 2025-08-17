@@ -1,33 +1,40 @@
-const fs = require('fs')
-const path = require('path')
+const fs = require("fs");
+const path = require("path");
 
 async function loadRoutesRecursively(dir, app) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name)
+    const fullPath = path.join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      await loadRoutesRecursively(fullPath, app)
+      await loadRoutesRecursively(fullPath, app);
     } else if (
       entry.isFile() &&
-      entry.name.endsWith('.route.js') &&
-      entry.name !== 'index.js' // ignore index.js itself
+      entry.name.endsWith(".route.js") &&
+      entry.name !== "index.js"
     ) {
-      const routeModule = require(fullPath)
-      const route = routeModule.default || routeModule
+      console.log("📂 Loading route file:", fullPath);
 
-    for(let key in route){
-        const read_route = route[key];
-        if (typeof  read_route === 'function') {
-            await read_route(app)
+      const routeModule = require(fullPath);
+      const route = routeModule.default || routeModule;
+
+      if (typeof route === "function") {
+        // directly export function
+        await route(app);
+      } else if (typeof route === "object") {
+        // object of functions
+        for (let key in route) {
+          const read_route = route[key];
+          if (typeof read_route === "function") {
+            await read_route(app);
+          }
         }
-    }
+      }
     }
   }
 }
 
 module.exports = async function (app, opts) {
-  // __dirname here is the directory of this index.js file
-  await loadRoutesRecursively(__dirname, app)
-}
+  await loadRoutesRecursively(__dirname, app);
+};
