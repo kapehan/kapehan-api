@@ -3,7 +3,6 @@ const cors = require("@fastify/cors");
 async function corsPlugin(fastify) {
   fastify.register(cors, {
     origin: [
-      "http://localhost:3000",
       "https://kapehan.ph",
       "https://god.kapehan.ph/"
     ],
