@@ -1,7 +1,13 @@
 {
   "version": 2,
   "builds": [
-    { "src": "init-server.js", "use": "@vercel/node" }
+    {
+      "src": "init-server.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": "routes/**"
+      }
+    }
   ],
   "routes": [
     { "src": "/(.*)", "dest": "init-server.js" }
