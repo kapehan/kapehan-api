@@ -24,7 +24,7 @@ async function buildServer() {
     fastify.log.info("Fastify server built successfully");
     return fastify;
   } catch (err) {
-    fastify.log.error("Error building Fastify server:", err);
+    fastify.log.error("Error building Fastify server: ", err);
     throw err;
   }
 }
