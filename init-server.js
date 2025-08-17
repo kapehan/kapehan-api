@@ -15,7 +15,7 @@ async function start() {
 
   try {
     await fastify.listen({ port: 3000 });
-    console.log("Server listening on http://localhost:3000");
+    console.log("Server is up and running");
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
