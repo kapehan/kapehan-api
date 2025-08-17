@@ -5,7 +5,7 @@ async function corsPlugin(fastify) {
     origin: [
       "http://localhost:3000",
       "https://kapehan.ph",
-      "https://staging.kapehan.ph"
+      "https://god.kapehan.ph/"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
