@@ -1,15 +1,15 @@
 {
   "version": 2,
   "builds": [
-    { "src": "init-server.js", "use": "@vercel/node" }
+    {
+      "src": "init-server.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": "**"
+      }
+    }
   ],
   "routes": [
     { "src": "/(.*)", "dest": "init-server.js" }
-  ],
-  "git": {
-    "deploymentEnabled": {
-      "main": true,
-      "staging": true
-    }
-  }
+  ]
 }
