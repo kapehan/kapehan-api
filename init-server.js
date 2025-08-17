@@ -4,37 +4,37 @@ const rateLimit = require("@fastify/rate-limit");
 
 const fastify = Fastify({ logger: true });
 
+// Flag to make sure we only register plugins once
+let isServerBuilt = false;
+
 async function buildServer() {
-  await fastify.register(corsPlugin);
+  if (!isServerBuilt) {
+    await fastify.register(corsPlugin);
 
-  fastify.register(rateLimit, {
-    max: 100,
-    timeWindow: "1 minute",
-  });
+    fastify.register(rateLimit, {
+      max: 100,
+      timeWindow: "1 minute",
+    });
 
-  fastify.register(require("./routes/"), { prefix: "/v1" });
+    fastify.register(require("./routes/"), { prefix: "/v1" });
 
+    isServerBuilt = true;
+  }
+
+  await fastify.ready();
   return fastify;
 }
 
-async function startLocal() {
-  await buildServer();
-  try {
-    await fastify.listen({ port: 3000, host: "0.0.0.0" });
-    console.log("Server running locally at http://localhost:3000");
-  } catch (err) {
-    fastify.log.error(err);
-    process.exit(1);
-  }
+if (!process.env.VERCEL) {
+  buildServer().then(() => {
+    fastify.listen({ port: 3000, host: "0.0.0.0" }).catch((err) => {
+      fastify.log.error(err);
+      process.exit(1);
+    });
+  });
 }
 
-if (process.env.VERCEL) {
-  module.exports = async (req, res) => {
-    await buildServer();
-    await fastify.ready();
-    fastify.server.emit("request", req, res);
-  };
-} else {
-  // Local server
-  startLocal();
-}
+module.exports = async (req, res) => {
+  const server = await buildServer();
+  server.server.emit("request", req, res);
+};
