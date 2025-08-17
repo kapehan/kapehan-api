@@ -5,17 +5,11 @@
       "src": "init-server.js",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": "routes/**"
+        "includeFiles": "**"
       }
     }
   ],
   "routes": [
     { "src": "/(.*)", "dest": "init-server.js" }
-  ],
-  "git": {
-    "deploymentEnabled": {
-      "main": true,
-      "staging": true
-    }
-  }
+  ]
 }
