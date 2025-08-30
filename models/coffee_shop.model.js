@@ -57,6 +57,11 @@ module.exports = (sequelize) => {
     coffee_shop_longtitude: {
         type: DataTypes.DOUBLE,
         allowNull: true
+    },
+    location: {
+      type: DataTypes.GEOMETRY('POINT', 4326), // if using geometry
+      // or DataTypes.GEOGRAPHY('POINT', 4326) if supported in your dialect
+      allowNull: true
     }
   }, {
     tableName: 'coffee_shops',

@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 
-async function loadRoutesRecursively(dir, fastify) {
+async function loadRoutesRecursively(dir, app) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
