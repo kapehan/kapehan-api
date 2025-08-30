@@ -2,18 +2,32 @@
 const fs = require("fs");
 const path = require("path");
 
-async function loadRoutesRecursively(dir, fastify) {
+async function loadRoutesRecursively(dir, app) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      await loadRoutesRecursively(fullPath, fastify);
-    } else if (entry.isFile() && entry.name.endsWith(".route.js")) {
-      const routeModule = require(fullPath);
-      if (typeof routeModule === "function") {
-        await routeModule(fastify);
-      }
+      await loadRoutesRecursively(fullPath, app)
+    } else if (
+      entry.isFile() &&
+      entry.name.endsWith('.route.js') &&
+      entry.name !== 'index.js' // ignore index.js itself
+    ) {
+      const routeModule = require(fullPath)
+      const route = routeModule.default || routeModule
+    
+        if(typeof route === 'function'){
+            await route(app);
+            continue;
+        }
+
+        for(let key in route){
+            const read_route = route[key];
+            if (typeof  read_route === 'function') {
+                await read_route(app)
+            }
+        }
     }
   }
 }

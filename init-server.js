@@ -2,6 +2,10 @@ const Fastify = require("fastify");
 const corsPlugin = require("./configs/cors.config");
 const rateLimit = require("@fastify/rate-limit");
 const { sequelize } = require("./services/db.service");
+const verify = require("./middleware/middleware");
+const config = require("./configs/config");
+const jwt = require("@fastify/jwt");
+const multipart = require('@fastify/multipart');
 
 let cachedServer = null;
 let dbInitialized = false; // ✅ ensures DB connects/syncs only once
@@ -27,16 +31,28 @@ async function initDatabase() {
 async function createServer() {
   const fastify = Fastify({ logger: true });
 
-  await fastify.register(corsPlugin);
-  fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
+  await Promise.all([
+    fastify.register(jwt, {
+      secret: config.auth_secret
+    }),
+    
+    fastify.register(multipart, {
+      attachFieldsToBody: true
+    }),
 
-  console.log("🔹 Registering routes with /v1 prefix");
-  await fastify.register(require("./routes/"), { prefix: "/v1" });
+    fastify.register(corsPlugin),
 
-  fastify.addHook("onRequest", (req, reply, done) => {
-    console.log(`📩 Incoming request: ${req.method} ${req.url}`);
-    done();
-  });
+    fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" }),
+
+    fastify.register(require("./routes/"), { prefix: "/v1" })
+  ])
+
+//   fastify.addHook('preHandler', async (request, reply) => {
+//     const url = request.url;
+//     const excludedPaths = [];
+//     if (excludedPaths.includes(`${url}`)) return;
+//     await verify(fastify, request, reply);
+// });
 
   fastify.setNotFoundHandler((req, reply) => {
     console.warn(`❌ Route not found: ${req.method}:${req.url}`);
