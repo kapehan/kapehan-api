@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-  const CoffeeShop = sequelize.define('CoffeeShop', {
+  const coffee_shop = sequelize.define('coffee_shop', {
     coffee_shop_uuid: {
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
@@ -51,12 +51,17 @@ module.exports = (sequelize) => {
       unique: true
     },
     coffee_shop_latitude: {
-        type: DataTypes.FLOAT,
-        allowNull: false
+        type: DataTypes.DOUBLE,
+        allowNull: true
     },
-    coffee_shop_longitude: {
-        type: DataTypes.FLOAT,
-        allowNull: false
+    coffee_shop_longtitude: {
+        type: DataTypes.DOUBLE,
+        allowNull: true
+    },
+    location: {
+      type: DataTypes.GEOMETRY('POINT', 4326), // if using geometry
+      // or DataTypes.GEOGRAPHY('POINT', 4326) if supported in your dialect
+      allowNull: true
     }
   }, {
     tableName: 'coffee_shops',
@@ -66,5 +71,5 @@ module.exports = (sequelize) => {
     updatedAt: false
   });
 
-  return CoffeeShop;
+  return coffee_shop;
 };
