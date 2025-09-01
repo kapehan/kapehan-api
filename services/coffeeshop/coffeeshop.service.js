@@ -93,11 +93,13 @@ const find = async (req) => {
                     required: false
                     }
                 ],
-                where: {
-                    vibe_uuid: {
-                        [Op.in]: body_param.vibes
+                ...(body_param?.vibes?.length && {
+                    where: {
+                        vibe_uuid: {
+                            [Op.in]: body_param.vibes
+                        }
                     }
-                }
+                })
             },
             {
                 model: coffee_shop_amenities,
@@ -108,11 +110,13 @@ const find = async (req) => {
                     required: false
                     }
                 ],
-                where: {
-                    amenities_uuid: {
-                        [Op.in]: body_param.amenities
+                ...(body_param?.amenities?.length && {
+                    where: {
+                        amenities_uuid: {
+                            [Op.in]: body_param.amenities
+                        }
                     }
-                }
+                })
             }
         ]
     });
