@@ -22,5 +22,22 @@ const create = async (req, reply) => {
   }
 };
 
+const find = async (req, reply) => {
+  try {
+    const data = await coffeeshop.find(req);
+    
+    if (!data) return reply.code(404).send(errorResponse('Coffee Shop not found.'));
+      const pageInfo = {
+        total: data.count,
+        page: parseInt(req.query.page) || 1,
+        limit: parseInt(req.query.pageSize) || 10,
+        totalPages: Math.ceil(data.count / (parseInt(req.query.pageSize) || 10))
+      }
+    reply.send(successResponse('Coffee Shop fetched successfully.', data.rows, pageInfo));
+  } catch (err) {
+    console.log("errorr", err);
+    reply.code(500).send(errorResponse('Failed to fetch Coffee Shop.', `${err.message}: ${err?.errors[0]?.message}`));
+  }
+};
 
-module.exports = { create};
+module.exports = { create, find};

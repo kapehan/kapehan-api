@@ -1,5 +1,6 @@
-const { coffee_shop, opening_hours, coffee_shop_vibe, coffee_shop_amenities  } = require('../db.service');
+const { coffee_shop, opening_hours, coffee_shop_vibe, coffee_shop_amenities, vibes, amenities  } = require('../db.service');
 const { v4: uuidv4 } = require('uuid');
+const { Op } = require('sequelize');
 
 const create = async (body) => {
     console.log("create -->");
@@ -57,42 +58,85 @@ const create = async (body) => {
 
 };
 
-const update = async (data) => {
-    if (!data.coffee_shop_uuid) data['coffee_shop_uuid'] = uuidv4();
-    try {
-        const {vibe, opening, amenities, ...coffee_shop_data} = data;
+const find = async (req) => {
+    const query = req.query;
+    const body_param = req.body;
+    const { page = 1, limit = 20, search, orderby = 'ASC', ...filters } = query;
 
-        const coffee_shop_res = await coffee_shop.create(coffee_shop_data);
+    const _limit = parseInt(limit);
+    const offset = (parseInt(page) - 1) * _limit;
+    let params = Object.assign({}, filters);
 
-        const coffee_shop_uuid = coffee_shop_res.coffee_shop_uuid;
-        const vibe_data = JSON.parse(vibe).map(data => ({
-            ...data,
-            coffee_shop_uuid
-        }));
-        const opening_data = JSON.parse(opening).map(data => ({
-            ...data,
-            coffee_shop_uuid
-        }));
-        const amenities_data = JSON.parse(amenities).map(data => ({
-            ...data,
-            coffee_shop_uuid
-        }));
-        const [opening_hours_res, coffee_shop_vibe_res, coffee_shop_amenities_res] = await Promise.all([
-            opening_hours.bulkCreate(vibe_data),
-            coffee_shop_vibe.bulkCreate(opening_data),
-            coffee_shop_amenities.bulkCreate(amenities_data) 
-        ]);
-
-        return {sucess: true, data : {
-            coffee_shop: coffee_shop_res,
-            opening_hours: opening_hours_res,
-            coffee_shop_amenities :coffee_shop_amenities_res,
-            coffee_shop_vibe: coffee_shop_vibe_res
-        }}
-    } catch (error) {
-        return {success: false, message: "Failed to save Coffe Shop", error: error.message}
+    if (search) {
+        params['coffee_shop_name'] = {
+        [Op.iLike]: `%${search}%`
+        };
     }
+
+    const {count, rows } = await coffee_shop.findAndCountAll({
+        where: params,
+        distinct: true,
+        limit: _limit,
+        offset,
+        order: [['coffee_shop_name', orderby]],
+        include: [
+            {
+                model: opening_hours,
+                required: false // LEFT JOIN
+            },
+            {
+                model: coffee_shop_vibe,
+                required: true,
+                include: [
+                    {
+                    model: vibes,
+                    required: false
+                    }
+                ],
+                ...(body_param?.vibes?.length && {
+                    where: {
+                        vibe_uuid: {
+                            [Op.in]: body_param.vibes
+                        }
+                    }
+                })
+            },
+            {
+                model: coffee_shop_amenities,
+                required: true,
+                include: [
+                    {
+                    model: amenities,
+                    required: false
+                    }
+                ],
+                ...(body_param?.amenities?.length && {
+                    where: {
+                        amenities_uuid: {
+                            [Op.in]: body_param.amenities
+                        }
+                    }
+                })
+            }
+        ]
+    });
+
+    const formattedRows = rows.map((shop) => {
+        const plainShop = shop.get({ plain: true });
+
+        return {
+            ...plainShop,
+            coffee_shop_vibes: plainShop.coffee_shop_vibes?.map(v => v.vibe?.vibe_name).filter(Boolean) || [],
+            coffee_shop_amenities: plainShop.coffee_shop_amenities?.map(a => a.amenity?.amenities_name).filter(Boolean) || []
+        };
+    });
+
+    return {
+        count,
+        rows: formattedRows
+    }
+
 
 };
 
-module.exports = {create, update};
+module.exports = {create, find};
