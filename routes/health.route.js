@@ -12,4 +12,4 @@ module.exports = async function (app) {
       service: "Kapehan Platform v1",
     });
   });
-};
+}; 
