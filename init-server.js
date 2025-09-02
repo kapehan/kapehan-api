@@ -35,7 +35,7 @@ async function createServer() {
     fastify.register(jwt, {
       secret: config.auth_secret
     }),
-    
+
     fastify.register(multipart, {
       attachFieldsToBody: true
     }),
@@ -47,12 +47,9 @@ async function createServer() {
     fastify.register(require("./routes/"), { prefix: "/v1" })
   ])
 
-//   fastify.addHook('preHandler', async (request, reply) => {
-//     const url = request.url;
-//     const excludedPaths = [];
-//     if (excludedPaths.includes(`${url}`)) return;
-//     await verify(fastify, request, reply);
-// });
+  fastify.addHook('preHandler', async (request, reply) => {
+    await verify(fastify, request, reply);
+  });
 
   fastify.setNotFoundHandler((req, reply) => {
     console.warn(`❌ Route not found: ${req.method}:${req.url}`);

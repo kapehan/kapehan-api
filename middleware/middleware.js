@@ -2,7 +2,7 @@ module.exports = async (app, request, reply) => {
   
   const authHeader = request.headers.authorization;
   console.log("request.url",request.url);
-  if(request.url == "/v1/test"){
+  if(request.url == "/v1/healthcheck"){
     return;
   }
   if (!authHeader?.startsWith('Bearer ')) {
@@ -11,7 +11,7 @@ module.exports = async (app, request, reply) => {
   const token = authHeader.split(' ')[1];
   console.log("token",token);
   try {
-    const verify_token = app.jwt.verify(token); 
+    app.jwt.verify(token); 
   } catch (err) {
     if (err.code === 'FAST_JWT_TOKEN_EXPIRED' || err.message?.includes('expired')) {
 
