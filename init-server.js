@@ -2,14 +2,16 @@ const Fastify = require("fastify");
 const corsPlugin = require("./configs/cors.config");
 const rateLimit = require("@fastify/rate-limit");
 const { sequelize } = require("./services/db.service");
-const verify = require("./middleware/middleware");
+const authMiddleware = require("./middleware/middleware");
 const config = require("./configs/config");
 const jwt = require("@fastify/jwt");
-const multipart = require('@fastify/multipart');
+const multipart = require("@fastify/multipart");
+const cookie = require("@fastify/cookie");
 
 let cachedServer = null;
-let dbInitialized = false; // ✅ ensures DB connects/syncs only once
+let dbInitialized = false;
 
+// Initialize DB
 async function initDatabase() {
   if (dbInitialized) return;
 
@@ -17,13 +19,15 @@ async function initDatabase() {
     await sequelize.authenticate();
     console.log("✅ Service connected to Supabase");
 
-    await sequelize.sync({ alter: true }); // create/alter tables
-    console.log("✅ Tables synced successfully");
+    if (process.env.NODE_ENV !== "production") {
+      await sequelize.sync({ alter: true });
+      console.log("✅ Tables synced (dev only)");
+    }
 
     dbInitialized = true;
   } catch (err) {
     console.error("❌ Failed to connect or sync database:", err);
-    process.exit(1);
+    throw err; // ❌ avoid process.exit in serverless
   }
 }
 
@@ -32,23 +36,20 @@ async function createServer() {
   const fastify = Fastify({ logger: true });
 
   await Promise.all([
-    fastify.register(jwt, {
-      secret: config.auth_secret
-    }),
-
-    fastify.register(multipart, {
-      attachFieldsToBody: true
-    }),
-
+    fastify.register(jwt, { secret: config.auth_secret }),
+    fastify.register(multipart, { attachFieldsToBody: true }),
     fastify.register(corsPlugin),
-
     fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" }),
+    fastify.register(require("./routes/"), { prefix: "/v1" }),
+  ]);
 
-    fastify.register(require("./routes/"), { prefix: "/v1" })
-  ])
+  // // ⚠️ Apply verify only where needed (instead of globally if you’ll have public routes)
+  // fastify.addHook("preHandler", async (request, reply) => {
+  //   await verify(fastify, request, reply);
+  // });
 
-  fastify.addHook('preHandler', async (request, reply) => {
-    await verify(fastify, request, reply);
+  fastify.register(cookie, {
+    parseOptions: {}, // no secret → cookies are plain
   });
 
   fastify.setNotFoundHandler((req, reply) => {
@@ -58,10 +59,9 @@ async function createServer() {
       .send({ message: `Route ${req.method}:${req.url} not found` });
   });
 
-  // 🔹 Initialize DB (once)
   await initDatabase();
-
   await fastify.ready();
+
   console.log("✅ Fastify server built successfully");
   return fastify;
 }
@@ -84,7 +84,7 @@ if (!process.env.VERCEL) {
     });
 }
 
-// Vercel serverless handler
+// Vercel handler
 module.exports = async (req, res) => {
   try {
     if (!cachedServer) cachedServer = await createServer();
@@ -97,8 +97,10 @@ module.exports = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Serverless handler error:", err);
-    res.statusCode = 500;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ error: "Internal Server Error" }));
+    if (!res.writableEnded) {
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: "Internal Server Error" }));
+    }
   }
 };
