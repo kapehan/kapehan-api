@@ -43,13 +43,8 @@ async function createServer() {
     fastify.register(require("./routes/"), { prefix: "/v1" }),
   ]);
 
-  // // ⚠️ Apply verify only where needed (instead of globally if you’ll have public routes)
-  // fastify.addHook("preHandler", async (request, reply) => {
-  //   await verify(fastify, request, reply);
-  // });
-
   fastify.register(cookie, {
-    parseOptions: {}, // no secret → cookies are plain
+    parseOptions: {}, 
   });
 
   fastify.setNotFoundHandler((req, reply) => {

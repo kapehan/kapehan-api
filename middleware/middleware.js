@@ -1,13 +1,12 @@
-// src/middlewares/authMiddleware.js
-const { authenticateUser } = require("../utils/authUtils");
+// middlewares/authMiddleware.js
+import { authenticateUser } from "../utils/authUtils.js";
 
-async function authMiddleware(request, reply) {
+export async function authMiddleware(request, reply) {
   try {
-    const user = await authenticateUser(request);
-    request.user = user; // attach to request object
+    await authenticateUser(request, reply);
+    // proceed to route
   } catch (err) {
-    reply.code(401).send({ error: "Unauthorized: Invalid session token." });
+    console.warn("[AuthMiddleware] Authentication failed:", err.message);
+    return reply.code(401).send({ error: err.message });
   }
 }
-
-module.exports = { authMiddleware };
