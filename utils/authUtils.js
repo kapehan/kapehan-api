@@ -5,13 +5,12 @@ import { AccessLevels } from "../utils/accessLevels.js";
 /**
  * Authenticate user via Supabase access token from cookies.
  * Throws 401 if no token or invalid session.
+ * Supports roles: anon, user, admin, coffee_shop_owner
  */
 export async function authenticateUser(request, reply) {
-  // Get tokens from cookies
   const accessToken = request.cookies?.["sb-access-token"] || null;
   const refreshToken = request.cookies?.["sb-refresh-token"] || null;
 
-  // ❌ No cookies → immediate 401
   if (!accessToken && !refreshToken) {
     console.log("[AuthMiddleware] No tokens found in cookies");
     throw new Error("Unauthorized: Invalid session token.");
@@ -20,19 +19,24 @@ export async function authenticateUser(request, reply) {
   let user = null;
   let role = "anon";
 
+  // Determine role from Supabase user object
   function extractRole(userObj) {
     if (!userObj) return "anon";
+
+    // Single role
     if (userObj.app_metadata?.role) return userObj.app_metadata.role;
+
+    // Array of roles
     if (Array.isArray(userObj.app_metadata?.roles) && userObj.app_metadata.roles.length > 0) {
-      return userObj.app_metadata.roles.includes("admin")
-        ? "admin"
-        : userObj.app_metadata.roles[0];
+      if (userObj.app_metadata.roles.includes("admin")) return "admin";
+      if (userObj.app_metadata.roles.includes("coffee_shop_owner")) return "coffee_shop_owner";
+      return "user";
     }
-    return "user"; // default role for registered users
+
+    return "user"; // default
   }
 
   try {
-    // Validate token via Supabase
     if (accessToken) {
       const { data, error } = await supabase.auth.getUser(accessToken);
       if (error || !data?.user) throw new Error("Invalid access token");
@@ -46,7 +50,6 @@ export async function authenticateUser(request, reply) {
   } catch (err) {
     console.warn("[AuthMiddleware] Access token invalid:", err.message);
 
-    // Try refresh token if available
     if (refreshToken) {
       try {
         const { data, error } = await supabase.auth.setSession({
@@ -99,13 +102,25 @@ export async function authenticateUser(request, reply) {
   const requiredAccess = request.routeOptions?.config?.access || AccessLevels.GUEST;
   console.log("[AuthMiddleware] Required access for route:", requiredAccess);
 
-  if (requiredAccess === AccessLevels.USER && !["user", "admin"].includes(role)) {
-    throw new Error("User access required");
+  switch (requiredAccess) {
+    case AccessLevels.GUEST:
+      return request.user; // anyone can access
+    case AccessLevels.USER:
+      if (!["user", "admin", "coffee_shop_owner"].includes(role)) {
+        throw new Error("User access required");
+      }
+      return request.user;
+    case AccessLevels.OWNER:
+      if (role !== "coffee_shop_owner") {
+        throw new Error("Owner access required");
+      }
+      return request.user;
+    case AccessLevels.ADMIN:
+      if (role !== "admin") {
+        throw new Error("Admin access required");
+      }
+      return request.user;
+    default:
+      return request.user;
   }
-
-  if (requiredAccess === AccessLevels.ADMIN && role !== "admin") {
-    throw new Error("Admin access required");
-  }
-
-  return request.user;
 };

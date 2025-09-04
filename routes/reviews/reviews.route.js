@@ -17,7 +17,6 @@ async function reviewsRoutes(fastify) {
     },
     async (req, reply) => {
       try {
-
         // Call your create function
         const createdReview = await create(req); // pass the body if needed
 
