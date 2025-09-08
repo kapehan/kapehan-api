@@ -132,7 +132,7 @@ export const getUserData = async (userId) => {
     }
 
     const { data, error } = await supabase
-      .from("users_table")
+      .from("users")
       .select("*")
       .eq("id", userId)
       .maybeSingle();

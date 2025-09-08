@@ -119,7 +119,7 @@ async function logoutUserController(req, reply) {
  */
 async function getUserDataController(request, reply) {
   try {
-    const userId = request.user?.id;
+    const userId = request.params.id;
 
     if (!userId) {
       return reply.code(401).send({ error: "Unauthorized" });

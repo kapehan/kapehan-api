@@ -82,7 +82,7 @@ const find = async (req) => {
         include: [
             {
                 model: opening_hours,
-                required: false // LEFT JOIN
+                required: false 
             },
             {
                 model: coffee_shop_vibe,
