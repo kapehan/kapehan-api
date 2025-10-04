@@ -27,7 +27,7 @@ async function initDatabase() {
   }
 }
 
-// Create Fastify server
+// Create Fastify server 
 async function createServer() {
   const fastify = Fastify({ logger: true });
 
