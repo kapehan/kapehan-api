@@ -1,5 +1,5 @@
 // src/controllers/user/auth.controller.js
-const userService = require("../../services/user/auth.service");
+const userService = require("../../services/user/userService");
 
 /**
  * Register a new user
@@ -15,9 +15,9 @@ async function registerUserController(req, reply) {
       username
     );
 
-    return reply.send({ 
-      message: "User registered successfully", 
-      data 
+    return reply.send({
+      message: "User registered successfully",
+      data,
     });
   } catch (error) {
     return reply.status(400).send({ error: error.message });
@@ -37,12 +37,8 @@ async function loginUserController(req, reply) {
       });
     }
 
-    const { isSuccess, accessToken, refreshToken, userId } = await userService.loginUser(
-      email,
-      password
-    );
-
-    console
+    const { isSuccess, accessToken, refreshToken, userId } =
+      await userService.loginUser(email, password);
 
     if (!isSuccess) {
       return reply.status(401).send({
@@ -70,8 +66,7 @@ async function loginUserController(req, reply) {
     return reply.send({
       message: "Login successful",
       isSuccess: true,
-      id: userId
-
+      id: userId,
     });
   } catch (error) {
     console.error("Login controller error:", error);
@@ -107,9 +102,9 @@ async function logoutUserController(req, reply) {
       isSuccess: true,
     });
   } catch (error) {
-    return reply.status(500).send({ 
-      error: error.message, 
-      isSuccess: false 
+    return reply.status(500).send({
+      error: error.message,
+      isSuccess: false,
     });
   }
 }
@@ -120,25 +115,54 @@ async function logoutUserController(req, reply) {
 async function getUserDataController(request, reply) {
   try {
     const userId = request.params.id;
+    const accessToken = request.cookies["sb-access-token"]; // ✅ get token from cookies
 
-    if (!userId) {
+    if (!userId || !accessToken) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
 
-    const data = await userService.getUserData(userId);
+    const data = await userService.getUserData(userId, accessToken);
 
-    return reply.send({ userData: data });
+    return reply.send({
+      isSuccess: true,
+      message: "User successfuly retrieved",
+      data: data,
+    });
   } catch (err) {
     console.error("getUserData exception:", err);
     return reply.code(500).send({ error: err.message });
   }
 }
 
+async function updateUserDataController(request, reply) {
+  const accessToken = request.cookies["sb-access-token"]; // ✅ get token from cookies
 
+  try {
+    const userId = request.params?.id;
+    const { username, city } = request.body;
+
+    if (!username && !city) {
+      return reply.code(400).send({ error: "No fields provided to update." });
+    }
+
+    const updatedData = await userService.updateUserData(userId, accessToken, {
+      username,
+      city,
+    });
+
+    return reply.send({
+      message: "User data updated successfully",
+      userData: updatedData, // Send the updated data
+    });
+  } catch (error) {
+    return reply.code(500).send({ error: error.message });
+  }
+}
 
 module.exports = {
   registerUserController,
   loginUserController,
   logoutUserController,
   getUserDataController,
+  updateUserDataController,
 };

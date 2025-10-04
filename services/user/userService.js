@@ -9,7 +9,8 @@
  * @property {{ user: SupabaseUser|null, session: SupabaseSession|null }} data
  */
 
-import supabase from "../../helpers/supaBaseClientConfig.js";
+import { supabase } from "../../configs/supabase.config.js";
+import { getSupabaseWithAuth } from "../../helpers/supaBaseClientWithId.js";
 
 export const registerUser = async (email, password, city, username) => {
   try {
@@ -43,7 +44,7 @@ export const registerUser = async (email, password, city, username) => {
 
     // Insert additional user info into your own table
     const { data: insertData, error: insertError } = await supabase
-      .from("users_table")
+      .from("users")
       .insert({
         id: userId,
         email: email,
@@ -84,7 +85,7 @@ export const loginUser = async (email, password) => {
       throw new Error(error.message || "An error occurred during login.");
     }
 
-    if (!data?.session?.access_token || !data?.session?.refresh_token) {
+    if (!data || !data.session || !data.user) {
       console.error("Unexpected login response:", data);
       throw new Error("Login failed: Invalid response from server.");
     }
@@ -93,12 +94,15 @@ export const loginUser = async (email, password) => {
     const refreshToken = data.session.refresh_token;
     const userId = data.user.id;
 
+    console.log("✅ Login successful");
+    console.log("Access token:", accessToken);
+    console.log("Refresh token:", refreshToken);
+
     return {
       isSuccess: true,
       accessToken,
       refreshToken,
-      user: data.user,
-      userId, // 👈 return it
+      userId,
     };
   } catch (err) {
     console.error("Login exception:", err);
@@ -123,7 +127,9 @@ export const logoutUser = async () => {
   }
 };
 
-export const getUserData = async (userId) => {
+export const getUserData = async (userId, accessToken) => {
+  const supabaseUser = getSupabaseWithAuth(accessToken); // ✅ pass token, not id
+
   try {
     console.log("userId", userId);
 
@@ -131,7 +137,7 @@ export const getUserData = async (userId) => {
       throw new Error("User ID is missing or invalid.");
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseUser
       .from("users")
       .select("*")
       .eq("id", userId)
@@ -151,6 +157,47 @@ export const getUserData = async (userId) => {
     console.error("getUserData exception:", err);
     throw new Error(
       err.message || "An unknown error occurred while retrieving user data."
+    );
+  }
+};
+
+export const updateUserData = async (userId, accessToken, data) => {
+  const supabaseUser = getSupabaseWithAuth(accessToken); // ✅ pass token, not id
+
+  const { username, city } = data;
+
+  try {
+    if (!userId) {
+      throw new Error("User ID is required to update user data.");
+    }
+
+    const { data: updatedData, error: tableError } = await supabaseUser
+      .from("users")
+      .update({
+        username: username,
+        city: city,
+      })
+      .eq("id", userId)
+      .select("*");
+
+    console.log("Query result:", { updatedData, tableError });
+
+    if (tableError) {
+      console.error("Error updating users:", tableError);
+      throw new Error("Error updating user data in the database.");
+    }
+
+    if (!updatedData || updatedData.length === 0) {
+      throw new Error("User not found or update failed in users.");
+    }
+
+    console.log("User data updated successfully in users:", updatedData);
+
+    return updatedData[0]; // Return the updated user data
+  } catch (err) {
+    console.error("updateUserData exception:", err);
+    throw new Error(
+      err.message || "An unknown error occurred while updating user data."
     );
   }
 };
