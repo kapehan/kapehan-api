@@ -2,106 +2,94 @@ const Fastify = require("fastify");
 const corsPlugin = require("./configs/cors.config");
 const rateLimit = require("@fastify/rate-limit");
 const { sequelize } = require("./services/db.service");
-const verify = require("./middleware/middleware");
 const config = require("./configs/config");
-const jwt = require("@fastify/jwt");
-const multipart = require('@fastify/multipart');
+const multipart = require("@fastify/multipart");
+const cookie = require("@fastify/cookie");
 
 let cachedServer = null;
-let dbInitialized = false; // ✅ ensures DB connects/syncs only once
+let dbInitialized = false;
 
+// Database initialization
 async function initDatabase() {
   if (dbInitialized) return;
-
   try {
     await sequelize.authenticate();
-    console.log("✅ Service connected to Supabase");
-
-    await sequelize.sync({ alter: true }); // create/alter tables
-    console.log("✅ Tables synced successfully");
-
+    console.log("✅ Connected to Supabase");
+    if (process.env.NODE_ENV !== "production") {
+      await sequelize.sync({ alter: true });
+      console.log("✅ Tables synced (dev only)");
+    }
     dbInitialized = true;
   } catch (err) {
-    console.error("❌ Failed to connect or sync database:", err);
-    process.exit(1);
+    console.error("❌ Database error:", err);
+    throw err;
   }
 }
 
-// Create Fastify server
+// Fastify server creation
 async function createServer() {
   const fastify = Fastify({ logger: true });
 
-  await Promise.all([
-    fastify.register(jwt, {
-      secret: config.auth_secret
-    }),
-    
-    fastify.register(multipart, {
-      attachFieldsToBody: true
-    }),
+  // Register plugins
+  await fastify.register(corsPlugin); // CORS FIRST
+  
+  await fastify.register(multipart, { attachFieldsToBody: true });
+  await fastify.register(cookie, { parseOptions: {} });
+  await fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
-    fastify.register(corsPlugin),
+  // Register routes
+  await fastify.register(require("./routes/"), { prefix: "/v1" });
 
-    fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" }),
-
-    fastify.register(require("./routes/"), { prefix: "/v1" })
-  ])
-
-//   fastify.addHook('preHandler', async (request, reply) => {
-//     const url = request.url;
-//     const excludedPaths = [];
-//     if (excludedPaths.includes(`${url}`)) return;
-//     await verify(fastify, request, reply);
-// });
-
+  // 404 handler
   fastify.setNotFoundHandler((req, reply) => {
-    console.warn(`❌ Route not found: ${req.method}:${req.url}`);
-    reply
-      .code(404)
-      .send({ message: `Route ${req.method}:${req.url} not found` });
+    reply.code(404).send({ message: `Route ${req.method}:${req.url} not found` });
   });
 
-  // 🔹 Initialize DB (once)
-  await initDatabase();
+  // Error handler
+  fastify.setErrorHandler((error, req, reply) => {
+    fastify.log.error(error);
+    reply.code(error.statusCode || 500).send({ error: error.message || "Internal Server Error" });
+  });
 
+  await initDatabase();
   await fastify.ready();
-  console.log("✅ Fastify server built successfully");
   return fastify;
 }
 
-// Local server
+// Local development server
 if (!process.env.VERCEL) {
-  createServer()
-    .then((server) => {
+  (async () => {
+    try {
+      const server = await createServer();
       server.listen({ port: 3000, host: "0.0.0.0" }, (err, address) => {
         if (err) {
           server.log.error(err);
           process.exit(1);
         }
-        console.log(`🌐 Server running locally at ${address}`);
+        console.log(`🌐 Server running at ${address}`);
       });
-    })
-    .catch((err) => {
-      console.error("❌ Failed to start local server:", err);
+    } catch (err) {
+      console.error("❌ Failed to start server:", err);
       process.exit(1);
-    });
+    }
+  })();
 }
 
 // Vercel serverless handler
 module.exports = async (req, res) => {
   try {
     if (!cachedServer) cachedServer = await createServer();
-
     cachedServer.server.emit("request", req, res);
-
     await new Promise((resolve, reject) => {
       res.on("finish", resolve);
       res.on("error", reject);
     });
   } catch (err) {
     console.error("❌ Serverless handler error:", err);
-    res.statusCode = 500;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ error: "Internal Server Error" }));
+    if (!res.writableEnded) {
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: "Internal Server Error" }));
+    }
   }
 };
