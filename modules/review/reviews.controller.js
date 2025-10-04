@@ -4,9 +4,8 @@ dayjs.extend(utc);
 
 const CoffeeShopReviews = require("../../services/reviews/reviews.service");
 
-const create = async (req, reply) => {
-  const result = await CoffeeShopReviews.create(req.body);
-  return reply.send(result);
+const create = async (req) => {
+  return await CoffeeShopReviews.create(req.body);
 };
 
 const findAll = async (req) => {

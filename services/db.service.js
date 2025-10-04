@@ -1,12 +1,12 @@
 const { Sequelize } = require('sequelize');
 const config = require('../configs/sql.config');
-const model = require('../models')
+const model = require('../models');
+
 const sequelize = new Sequelize(config.database, config.user, config.password, {
   host: config.host,
   dialect: 'postgres',
   logging: false,
   timezone: '+08:00',
-  alter: false,
   port: 5432,
   define: {
     timestamps: true,
@@ -17,16 +17,14 @@ const sequelize = new Sequelize(config.database, config.user, config.password, {
       require: true,
       rejectUnauthorized: false
     }
+  },
+  pool: {
+    max: 1,   // ✅ important for Vercel
+    min: 0,
+    idle: 10000,
+    acquire: 30000
   }
 });
 
-sequelize
-  .authenticate()
-  .then(() => {
-    console.log('Service connected to SupaBase');
-  })
-  .catch((error) => {
-    console.error('Unable to connect: ', error);
-  });
-
+// Don't auto-authenticate here – let initDatabase() handle it
 module.exports = { sequelize, ...model(sequelize) };
