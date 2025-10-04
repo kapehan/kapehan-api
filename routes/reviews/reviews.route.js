@@ -4,7 +4,7 @@ const {
   findById,
   update,
   remove,
-} = require("../../controllers/reviews/reviews.controller");
+} = require("../../modules/review/reviews.controller.js");
 const { authMiddleware } = require("../../middleware/middleware.js");
 const { AccessLevels } = require("../../utils/accessLevels.js");
 

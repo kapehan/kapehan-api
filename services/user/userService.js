@@ -1,79 +1,59 @@
-/**
- * @typedef {import('@supabase/supabase-js').User} SupabaseUser
- * @typedef {import('@supabase/supabase-js').Session} SupabaseSession
- */
+// services/users/users.service.js
+const { supabase } = require("../../configs/supabase.config.js");
+const { getSupabaseWithAuth } = require("../../helpers/supaBaseClientWithId.js");
 
 /**
- * @typedef {Object} RegisterResponse
- * @property {string} message
- * @property {{ user: SupabaseUser|null, session: SupabaseSession|null }} data
+ * Register a new user
  */
-
-import { supabase } from "../../configs/supabase.config.js";
-import { getSupabaseWithAuth } from "../../helpers/supaBaseClientWithId.js";
-
-export const registerUser = async (email, password, city, username) => {
+const registerUser = async (email, password, city, username) => {
   try {
-    // Attempt to sign up the user
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp(
       {
         email,
         password,
         options: {
           data: {
-            role: "user", // Optional: metadata
-            display_name: username, // Add username to user metadata
+            role: "user",
+            display_name: username,
           },
         },
       }
     );
 
-    // Handle sign-up errors
     if (signUpError) {
-      console.error("Sign-up error details:", signUpError); // Log full error details
-      throw new Error(
-        `Sign-up failed: ${signUpError.message || "Unknown error"}`
-      );
+      console.error("Sign-up error details:", signUpError);
+      throw new Error(signUpError.message || "Sign-up failed");
     }
 
     const userId = signUpData.user?.id;
-    if (!userId) {
-      console.error("Sign-up response missing user ID:", signUpData); // Log the response
-      throw new Error("User ID not returned from sign-up");
-    }
+    if (!userId) throw new Error("User ID not returned from sign-up");
 
-    // Insert additional user info into your own table
     const { data: insertData, error: insertError } = await supabase
       .from("users")
       .insert({
         id: userId,
-        email: email,
-        city: city,
+        email,
+        city,
         role: "user",
-        username: username, // Insert username into your custom table
+        username,
       });
 
-    // Handle insert errors
     if (insertError) {
-      console.error("Insert error details:", insertError); // Log full error details
-      throw new Error(
-        `Insert into user_table failed: ${
-          insertError.message || "Unknown error"
-        }`
-      );
+      console.error("Insert error details:", insertError);
+      throw new Error(insertError.message || "Insert into user table failed");
     }
 
-    console.log("Insert success:", insertData); // Log success response
     return signUpData;
-  } catch (error) {
-    console.error("Error in registerUser:", error); // Log the full error object
-    throw new Error(
-      error.message || "An unknown error occurred during user registration"
-    );
+  } catch (err) {
+    console.error("Error in registerUser:", err);
+    throw new Error(err.message || "Unknown error during registration");
   }
 };
 
-export const loginUser = async (email, password) => {
+/**
+ * Login a user
+ */
+const loginUser = async (email, password) => {
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -82,27 +62,19 @@ export const loginUser = async (email, password) => {
 
     if (error) {
       console.error("Supabase login error:", error);
-      throw new Error(error.message || "An error occurred during login.");
+      throw new Error(error.message || "Login failed");
     }
 
     if (!data || !data.session || !data.user) {
       console.error("Unexpected login response:", data);
-      throw new Error("Login failed: Invalid response from server.");
+      throw new Error("Login failed: Invalid response");
     }
-
-    const accessToken = data.session.access_token;
-    const refreshToken = data.session.refresh_token;
-    const userId = data.user.id;
-
-    console.log("✅ Login successful");
-    console.log("Access token:", accessToken);
-    console.log("Refresh token:", refreshToken);
 
     return {
       isSuccess: true,
-      accessToken,
-      refreshToken,
-      userId,
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      userId: data.user.id,
     };
   } catch (err) {
     console.error("Login exception:", err);
@@ -110,16 +82,18 @@ export const loginUser = async (email, password) => {
   }
 };
 
-export const logoutUser = async () => {
+/**
+ * Logout a user
+ */
+const logoutUser = async () => {
   try {
     const { error } = await supabase.auth.signOut();
 
     if (error) {
       console.error("Supabase logout error:", error);
-      throw new Error(error.message || "An error occurred during logout.");
+      throw new Error(error.message || "Logout failed");
     }
 
-    console.log("Logout successful.");
     return { isSuccess: true, message: "Logout successful" };
   } catch (err) {
     console.error("Logout exception:", err);
@@ -127,15 +101,14 @@ export const logoutUser = async () => {
   }
 };
 
-export const getUserData = async (userId, accessToken) => {
-  const supabaseUser = getSupabaseWithAuth(accessToken); // ✅ pass token, not id
+/**
+ * Get user data by ID
+ */
+const getUserData = async (userId, accessToken) => {
+  const supabaseUser = getSupabaseWithAuth(accessToken);
 
   try {
-    console.log("userId", userId);
-
-    if (!userId) {
-      throw new Error("User ID is missing or invalid.");
-    }
+    if (!userId) throw new Error("User ID is missing or invalid.");
 
     const { data, error } = await supabaseUser
       .from("users")
@@ -145,59 +118,54 @@ export const getUserData = async (userId, accessToken) => {
 
     if (error) {
       console.error("Supabase error:", error);
-      throw new Error("Error retrieving user data.");
+      throw new Error("Error retrieving user data");
     }
 
-    if (!data) {
-      throw new Error("User not found or access denied by RLS.");
-    }
+    if (!data) throw new Error("User not found or access denied");
 
     return data;
   } catch (err) {
     console.error("getUserData exception:", err);
-    throw new Error(
-      err.message || "An unknown error occurred while retrieving user data."
-    );
+    throw new Error(err.message || "Unknown error while retrieving user data");
   }
 };
 
-export const updateUserData = async (userId, accessToken, data) => {
-  const supabaseUser = getSupabaseWithAuth(accessToken); // ✅ pass token, not id
-
+/**
+ * Update user data
+ */
+const updateUserData = async (userId, accessToken, data) => {
+  const supabaseUser = getSupabaseWithAuth(accessToken);
   const { username, city } = data;
 
   try {
-    if (!userId) {
-      throw new Error("User ID is required to update user data.");
-    }
+    if (!userId) throw new Error("User ID is required to update user data");
 
     const { data: updatedData, error: tableError } = await supabaseUser
       .from("users")
-      .update({
-        username: username,
-        city: city,
-      })
+      .update({ username, city })
       .eq("id", userId)
       .select("*");
 
-    console.log("Query result:", { updatedData, tableError });
-
     if (tableError) {
       console.error("Error updating users:", tableError);
-      throw new Error("Error updating user data in the database.");
+      throw new Error("Error updating user data in database");
     }
 
     if (!updatedData || updatedData.length === 0) {
-      throw new Error("User not found or update failed in users.");
+      throw new Error("User not found or update failed");
     }
 
-    console.log("User data updated successfully in users:", updatedData);
-
-    return updatedData[0]; // Return the updated user data
+    return updatedData[0];
   } catch (err) {
     console.error("updateUserData exception:", err);
-    throw new Error(
-      err.message || "An unknown error occurred while updating user data."
-    );
+    throw new Error(err.message || "Unknown error while updating user data");
   }
+};
+
+module.exports = {
+  registerUser,
+  loginUser,
+  logoutUser,
+  getUserData,
+  updateUserData,
 };

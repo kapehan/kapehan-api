@@ -1,7 +1,7 @@
 // middlewares/authMiddleware.js
-import { authenticateUser } from "../utils/authUtils.js";
+const { authenticateUser } = require("../utils/authUtils.js");
 
-export async function authMiddleware(request, reply) {
+async function authMiddleware(request, reply) {
   try {
     await authenticateUser(request, reply);
     // proceed to route
@@ -10,3 +10,5 @@ export async function authMiddleware(request, reply) {
     return reply.code(401).send({ error: err.message });
   }
 }
+
+module.exports = { authMiddleware };
