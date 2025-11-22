@@ -4,6 +4,7 @@ const {
   logoutUserController,
   getUserDataController,
   updateUserDataController,
+  refreshTokenController,
 } = require("../../controllers/users/users.controller");
 
 const { authMiddleware } = require("../../middleware/middleware");
@@ -14,21 +15,15 @@ async function userRoutes(fastify) {
   fastify.post("/user/logout", logoutUserController);
   fastify.post("/user/register", registerUserController);
   fastify.get(
-    "/user/:id",
+    "/user",
     {
       preHandler: authMiddleware,
       config: { access: AccessLevels.USER },
     },
     getUserDataController
   );
-  fastify.post(
-    "/user/update/:id",
-    {
-      preHandler: authMiddleware,
-      config: { access: AccessLevels.USER },
-    },
-    updateUserDataController
-  );
+
+  fastify.post("/user/refreshToken", refreshTokenController);
 }
 
 module.exports = userRoutes;

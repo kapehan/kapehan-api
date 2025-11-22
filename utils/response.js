@@ -1,30 +1,36 @@
-function successResponse(message, data = null, pageInfo = {}, status = 200) {
-  return {
-    success: true,
+// utils/responseUtils.js
+
+/**
+ * Sends a successful response
+ * @param {any} data - The main payload (array or object)
+ * @param {string} message - Optional success message
+ * @param {object} pageInfo - Optional pagination info
+ */
+const sendSuccess = (data = [], message = "Success", pageInfo = null) => {
+  const response = {
+    isSuccess: true,
     message,
     data,
-    pageInfo,
-    status
   };
-}
-  
-function errorResponse(message, error = null) {
-  let formattedError = error;
 
-  // Sequelize error formatting example
-  if (error && error.errors && Array.isArray(error.errors)) {
-    formattedError = error.errors.map(e => e.message).join(', ');
+  if (pageInfo) {
+    response.pageInfo = pageInfo;
   }
 
-  return {
-    success: false,
-    message,
-    error: formattedError
-  };
-}
-  
-module.exports = {
-  successResponse,
-  errorResponse
+  return response;
 };
-  
+
+/**
+ * Sends an error response
+ * @param {string} errorMessage
+ */
+const sendError = (errorMessage = "Something went wrong") => ({
+  isSuccess: false,
+  data: null,
+  message: errorMessage,
+});
+
+module.exports = {
+  sendSuccess,
+  sendError,
+};
