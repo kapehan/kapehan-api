@@ -1,49 +1,55 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
 module.exports = (sequelize) => {
-    const models = {};
+  const models = {};
+  const loaded = [];
+  const failed = [];
 
-    fs.readdirSync(__dirname)
-        .filter(file => file.endsWith('.model.js'))
-        .forEach(file => {
-            const modelDef = require(path.join(__dirname, file));
-            const model = modelDef(sequelize);
-            models[model.name] = model; // 
-        });
-    const {
-        coffee_shop,
-        coffee_shop_amenities,
-        coffee_shop_vibe,
-        opening_hours,
-        amenities,
-        vibes,
-    } = models;
+  fs.readdirSync(__dirname)
+    .filter((file) => file.endsWith(".model.js"))
+    .forEach((file) => {
+      try {
+        const modelDef = require(path.join(__dirname, file));
 
-    if (coffee_shop && opening_hours) {
-        coffee_shop.hasMany(opening_hours, { foreignKey: 'coffee_shop_uuid' });
-        opening_hours.belongsTo(coffee_shop, { foreignKey: 'coffee_shop_uuid' });
-    }
+        if (typeof modelDef !== "function" && typeof modelDef !== "object") {
+          throw new Error(`Expected function or object export, got ${typeof modelDef}`);
+        }
 
-    if (coffee_shop && coffee_shop_amenities) {
-        coffee_shop.hasMany(coffee_shop_amenities, { foreignKey: 'coffee_shop_uuid' });
-        coffee_shop_amenities.belongsTo(coffee_shop, { foreignKey: 'coffee_shop_uuid' });
-    }
+        const result = typeof modelDef === "function" ? modelDef(sequelize) : modelDef(sequelize);
 
-    if (coffee_shop && coffee_shop_vibe) {
-        coffee_shop.hasMany(coffee_shop_vibe, { foreignKey: 'coffee_shop_uuid' });
-        coffee_shop_vibe.belongsTo(coffee_shop, { foreignKey: 'coffee_shop_uuid' });
-    }
+        // case: single model
+        if (result && result.name) {
+          models[result.name] = result;
+          loaded.push(result.name);
+          console.log(`✅ Loaded model: ${result.name} (${file})`);
+        }
 
-    if (coffee_shop_amenities && amenities) {
-        coffee_shop_amenities.belongsTo(amenities, { foreignKey: 'amenities_uuid' });
-        amenities.hasMany(coffee_shop_amenities, { foreignKey: 'amenities_uuid' });
-    }
+        // case: multiple models (object of models)
+        else if (result && typeof result === "object") {
+          for (const [key, mdl] of Object.entries(result)) {
+            if (mdl && mdl.name) {
+              models[mdl.name] = mdl;
+              loaded.push(mdl.name);
+              console.log(`✅ Loaded model: ${mdl.name} (${file})`);
+            } else {
+              throw new Error(`Invalid model "${key}" in file ${file}`);
+            }
+          }
+        } else {
+          throw new Error(`File "${file}" did not return a valid Sequelize model`);
+        }
+      } catch (err) {
+        failed.push(file);
+        console.error(`❌ Failed to load model from file "${file}"`);
+        console.error(err.message);
+      }
+    });
 
-    if (coffee_shop_vibe && vibes) {
-        coffee_shop_vibe.belongsTo(vibes, { foreignKey: 'vibe_uuid' });
-        vibes.hasMany(coffee_shop_vibe, { foreignKey: 'vibe_uuid' });
-    }
-    
-    return models;
+  console.log("✅ Models initialized:", loaded);
+  if (failed.length) {
+    console.warn("⚠️ Models failed to load:", failed);
+  }
+
+  return models;
 };

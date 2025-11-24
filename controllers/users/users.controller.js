@@ -1,26 +1,21 @@
 // src/controllers/user/auth.controller.js
 const userService = require("../../services/user/userService");
-
+const jwt = require("jsonwebtoken");
+const { sendSuccess, sendError } = require("../../utils/response");
+const { getOrCreateAnonymousUser } = require("../users/anonymous.controller");
 /**
- * Register a new user
+ * Register user
  */
 async function registerUserController(req, reply) {
   try {
     const { email, password, city, username } = req.body;
 
-    const data = await userService.registerUser(
-      email,
-      password,
-      city,
-      username
-    );
+    const data = await userService.registerUser(email, password, city, username);
 
-    return reply.send({
-      message: "User registered successfully",
-      data,
-    });
+    return reply.code(201).send(sendSuccess(data, "User registered successfully"));
   } catch (error) {
-    return reply.status(400).send({ error: error.message });
+    console.error("Register user error:", error);
+    return reply.code(400).send(sendError(error.message));
   }
 }
 
@@ -32,47 +27,38 @@ async function loginUserController(req, reply) {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return reply.status(400).send({
-        error: "Email and password are required fields.",
-      });
+      return reply.code(400).send(sendError("Email and password are required fields."));
     }
 
-    const { isSuccess, accessToken, refreshToken, userId } =
-      await userService.loginUser(email, password);
+    const { isSuccess, accessToken, refreshToken, userId } = await userService.loginUser(email, password);
 
     if (!isSuccess) {
-      return reply.status(401).send({
-        error: "Login failed.",
-        isSuccess: false,
-      });
+      return reply.code(401).send(sendError("Login failed."));
     }
 
+    const isProduction = process.env.NODE_ENV === "production";
+
+    // Set cookies
     reply
       .setCookie("sb-access-token", accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "Strict",
+        secure: isProduction,
+        sameSite: isProduction ? "Strict" : "Lax",
         path: "/",
         maxAge: 60 * 60, // 1 hour
       })
       .setCookie("sb-refresh-token", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "Strict",
+        secure: isProduction,
+        sameSite: isProduction ? "Strict" : "Lax",
         path: "/",
         maxAge: 60 * 60 * 24 * 7, // 7 days
       });
 
-    return reply.send({
-      message: "Login successful",
-      isSuccess: true,
-      id: userId,
-    });
+    return reply.send(sendSuccess({ id: userId }, "Login successful"));
   } catch (error) {
     console.error("Login controller error:", error);
-    return reply.status(500).send({
-      error: "Server error: " + error.message,
-    });
+    return reply.code(500).send(sendError("Server error: " + error.message));
   }
 }
 
@@ -83,6 +69,7 @@ async function logoutUserController(req, reply) {
   try {
     await userService.logoutUser();
 
+    // Clear cookies
     reply.clearCookie("sb-access-token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -97,65 +84,96 @@ async function logoutUserController(req, reply) {
       path: "/",
     });
 
-    return reply.send({
-      message: "Logout successful",
-      isSuccess: true,
-    });
+    return reply.send(sendSuccess(null, "Logout successful"));
   } catch (error) {
-    return reply.status(500).send({
-      error: error.message,
-      isSuccess: false,
-    });
+    console.error("Logout controller error:", error);
+    return reply.code(500).send(sendError(error.message));
   }
 }
 
 /**
- * Get current user data
+ * Get current user data (authenticated or anonymous)
+ * Single identity resolver endpoint
  */
-async function getUserDataController(request, reply) {
+async function getUserDataController(req, reply) {
   try {
-    const userId = request.params.id;
-    const accessToken = request.cookies["sb-access-token"]; // ✅ get token from cookies
+    // 1) Try authenticated user first
+    const accessToken = req.cookies["sb-access-token"];
+    if (accessToken) {
+      try {
+        const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+        const decoded = jwt.verify(accessToken, SUPABASE_JWT_SECRET);
+        const userId = decoded.sub;
+        const supabaseResponse = await userService.getUserData(userId, accessToken);
+        const data = supabaseResponse?.data || supabaseResponse?.user || supabaseResponse || {};
 
-    if (!userId || !accessToken) {
-      return reply.code(401).send({ error: "Unauthorized" });
+        return reply.send(sendSuccess({ ...data, role: "user" }, "User successfully retrieved"));
+      } catch (err) {
+        console.warn("⚠️ Invalid access token, falling back to anonymous:", err.message);
+      }
     }
 
-    const data = await userService.getUserData(userId, accessToken);
-
-    return reply.send({
-      isSuccess: true,
-      message: "User successfuly retrieved",
-      data: data,
-    });
+    // 2) Fallback to anonymous (delegate to anonymous controller)
+    return await getOrCreateAnonymousUser(req, reply);
   } catch (err) {
-    console.error("getUserData exception:", err);
-    return reply.code(500).send({ error: err.message });
+    console.error("Get user data exception:", err);
+    return reply.code(500).send(sendError(err.message));
   }
 }
 
-async function updateUserDataController(request, reply) {
-  const accessToken = request.cookies["sb-access-token"]; // ✅ get token from cookies
-
+/**
+ * Refresh token
+ */
+async function refreshTokenController(req, reply) {
   try {
-    const userId = request.params?.id;
-    const { username, city } = request.body;
-
-    if (!username && !city) {
-      return reply.code(400).send({ error: "No fields provided to update." });
+    const refreshToken = req.cookies["sb-refresh-token"];
+    if (!refreshToken) {
+      return reply.code(401).send(sendError("No refresh token provided"));
     }
 
-    const updatedData = await userService.updateUserData(userId, accessToken, {
-      username,
-      city,
-    });
+    const { data, error } = await userService.refreshSession(refreshToken);
 
-    return reply.send({
-      message: "User data updated successfully",
-      userData: updatedData, // Send the updated data
-    });
-  } catch (error) {
-    return reply.code(500).send({ error: error.message });
+    if (error || !data?.session) {
+      return reply.code(401).send(sendError("Invalid refresh token"));
+    }
+
+    console.log("✅ Refresh triggered successfully");
+
+    const { session } = data;
+    const newAccessToken = session.access_token;
+    const newRefreshToken = session.refresh_token;
+    const isProduction = process.env.NODE_ENV === "production";
+
+    // Set new cookies
+    reply
+      .setCookie("sb-access-token", newAccessToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "Strict" : "Lax",
+        path: "/",
+        maxAge: 60 * 60, // 1 hour
+      })
+      .setCookie("sb-refresh-token", newRefreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "Strict" : "Lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+      });
+
+    return reply.send(
+      sendSuccess(
+        {
+          access_token: newAccessToken,
+          refresh_token: newRefreshToken,
+          user: session.user,
+        },
+        "Token refreshed successfully"
+      )
+    );
+  } catch (err) {
+    console.error("Refresh token error:", err);
+    return reply.code(500).send(sendError("Internal server error"));
   }
 }
 
@@ -164,5 +182,5 @@ module.exports = {
   loginUserController,
   logoutUserController,
   getUserDataController,
-  updateUserDataController,
+  refreshTokenController,
 };

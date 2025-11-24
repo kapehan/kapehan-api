@@ -9,13 +9,14 @@
  * @property {{ user: SupabaseUser|null, session: SupabaseSession|null }} data
  */
 
-import { supabase } from "../../configs/supabase.config.js";
+import { supabaseAnon } from "../../helpers/supabaseRoleConfig.js";
 import { getSupabaseWithAuth } from "../../helpers/supaBaseClientWithId.js";
+import { createClient } from "@supabase/supabase-js";
 
 export const registerUser = async (email, password, city, username) => {
   try {
     // Attempt to sign up the user
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp(
+    const { data: signUpData, error: signUpError } = await supabaseAnon.auth.signUp(
       {
         email,
         password,
@@ -75,7 +76,7 @@ export const registerUser = async (email, password, city, username) => {
 
 export const loginUser = async (email, password) => {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabaseAnon.auth.signInWithPassword({
       email,
       password,
     });
@@ -89,6 +90,8 @@ export const loginUser = async (email, password) => {
       console.error("Unexpected login response:", data);
       throw new Error("Login failed: Invalid response from server.");
     }
+
+    console.log("data", data);
 
     const accessToken = data.session.access_token;
     const refreshToken = data.session.refresh_token;
@@ -112,7 +115,7 @@ export const loginUser = async (email, password) => {
 
 export const logoutUser = async () => {
   try {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabaseAnon.auth.signOut();
 
     if (error) {
       console.error("Supabase logout error:", error);
@@ -199,5 +202,40 @@ export const updateUserData = async (userId, accessToken, data) => {
     throw new Error(
       err.message || "An unknown error occurred while updating user data."
     );
+  }
+};
+
+export const refreshSession = async (refreshToken) => {
+  if (!refreshToken) return { data: null, error: "No refresh token" };
+
+  try {
+    // ✅ Create a NEW isolated Supabase client
+
+
+    // ✅ Use refreshSession instead of setSession
+    const { data, error } = await supabaseAnon.auth.refreshSession({
+      refresh_token: refreshToken,
+    });
+
+    if (error || !data?.session) {
+      console.error("❌ Supabase refresh error:", error);
+      return { data: null, error };
+    }
+
+    const { session } = data;
+
+    return {
+      data: {
+        session: {
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          user: session.user,
+        },
+      },
+      error: null,
+    };
+  } catch (err) {
+    console.error("⚠️ refreshSession error:", err);
+    return { data: null, error: err.message };
   }
 };

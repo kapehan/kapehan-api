@@ -1,5 +1,5 @@
 const Fastify = require("fastify");
-const corsPlugin = require("./configs/cors.config");
+const cors = require("@fastify/cors");
 const rateLimit = require("@fastify/rate-limit");
 const { sequelize } = require("./services/db.service");
 const config = require("./configs/config");
@@ -16,7 +16,7 @@ async function initDatabase() {
     await sequelize.authenticate();
     console.log("✅ Connected to Supabase");
     if (process.env.NODE_ENV !== "production") {
-      await sequelize.sync({ alter: true });
+      await sequelize.sync();
       console.log("✅ Tables synced (dev only)");
     }
     dbInitialized = true;
@@ -30,9 +30,21 @@ async function initDatabase() {
 async function createServer() {
   const fastify = Fastify({ logger: true });
 
-  // Register plugins
-  await fastify.register(corsPlugin); // CORS FIRST
-  
+  // Register CORS directly (MUST BE FIRST)
+  await fastify.register(cors, {
+    origin: [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "https://kapehan.ph",
+      "localhost:3000",
+      "https://god.kapehan.ph",
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  });
+
+  // Register other plugins
   await fastify.register(multipart, { attachFieldsToBody: true });
   await fastify.register(cookie, { parseOptions: {} });
   await fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
@@ -61,7 +73,7 @@ if (!process.env.VERCEL) {
   (async () => {
     try {
       const server = await createServer();
-      server.listen({ port: 3000, host: "0.0.0.0" }, (err, address) => {
+      server.listen({ port: 4000, host: "localhost" }, (err, address) => {
         if (err) {
           server.log.error(err);
           process.exit(1);

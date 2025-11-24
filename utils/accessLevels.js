@@ -1,7 +1,8 @@
 // utils/accessLevels.js
 export const AccessLevels = {
-  GUEST: "guest",
+  GUEST: "guest",        // no token required
+  ANONYMOUS: "anonymous",// requires anon OR user token
   USER: "user",
+  OWNER: "owner",
   ADMIN: "admin",
-  OWNER: "coffee_shop_owner"
 };
