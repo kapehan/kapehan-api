@@ -2,7 +2,7 @@
 const userService = require("../../services/user/userService");
 const jwt = require("jsonwebtoken");
 const { sendSuccess, sendError } = require("../../utils/response");
-
+const { getOrCreateAnonymousUser } = require("../users/anonymous.controller");
 /**
  * Register user
  */
@@ -92,25 +92,29 @@ async function logoutUserController(req, reply) {
 }
 
 /**
- * Get current user data
+ * Get current user data (authenticated or anonymous)
+ * Single identity resolver endpoint
  */
 async function getUserDataController(req, reply) {
   try {
+    // 1) Try authenticated user first
     const accessToken = req.cookies["sb-access-token"];
-    if (!accessToken) return reply.code(401).send(sendError("Unauthorized"));
+    if (accessToken) {
+      try {
+        const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+        const decoded = jwt.verify(accessToken, SUPABASE_JWT_SECRET);
+        const userId = decoded.sub;
+        const supabaseResponse = await userService.getUserData(userId, accessToken);
+        const data = supabaseResponse?.data || supabaseResponse?.user || supabaseResponse || {};
 
-    const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
-    const decoded = jwt.verify(accessToken, SUPABASE_JWT_SECRET);
+        return reply.send(sendSuccess({ ...data, role: "user" }, "User successfully retrieved"));
+      } catch (err) {
+        console.warn("⚠️ Invalid access token, falling back to anonymous:", err.message);
+      }
+    }
 
-    const userId = decoded.sub;
-    const supabaseResponse = await userService.getUserData(userId, accessToken);
-
-    console.log("supabase response", supabaseResponse)
-
-    // Only extract the actual user data
-    const data = supabaseResponse?.data || supabaseResponse?.user || supabaseResponse || {};
-
-    return reply.send(sendSuccess(data, "User successfully retrieved"));
+    // 2) Fallback to anonymous (delegate to anonymous controller)
+    return await getOrCreateAnonymousUser(req, reply);
   } catch (err) {
     console.error("Get user data exception:", err);
     return reply.code(500).send(sendError(err.message));

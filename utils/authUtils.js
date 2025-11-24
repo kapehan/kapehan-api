@@ -36,10 +36,42 @@ export async function authenticateUser(request, reply) {
   // 1) Determine required access first
   const requiredAccess = request.routeOptions?.config?.access || AccessLevels.GUEST;
 
-  // 2) Allow guests without token checks
+  // 2) GUEST routes now require anonymous OR authenticated token
   if (requiredAccess === AccessLevels.GUEST) {
-    request.user = { isAuthenticated: false, role: "anon", id: null, user: null };
-    return; // continue to handler
+    const anonToken = request.cookies?.["sb-access-anon-token"] || null;
+    const accessToken = request.cookies?.["sb-access-token"] || null;
+
+    // Try anonymous token first
+    if (anonToken) {
+      try {
+        const { data, error } = await supabaseAnon.auth.getUser(anonToken);
+        if (!error && data?.user) {
+          request.user = { isAuthenticated: false, role: "guest", id: data.user.id, user: data.user };
+          return;
+        }
+      } catch (err) {
+        console.warn("⚠️ Invalid anonymous token:", err.message);
+      }
+    }
+
+    // Try authenticated token
+    if (accessToken) {
+      try {
+        const { data, error } = await getUserFromToken(accessToken);
+        if (!error && data?.user) {
+          const role = extractRole(data.user);
+          request.user = { isAuthenticated: true, role, id: data.user.id, user: data.user };
+          return;
+        }
+      } catch (err) {
+        console.warn("⚠️ Invalid access token:", err.message);
+      }
+    }
+
+    // No valid token: reject
+    const payload = sendError("Unauthorized: Anonymous or authenticated token required.");
+    reply.code(401).send(payload);
+    return;
   }
 
   // 3) Enforce auth for non-guest routes

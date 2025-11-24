@@ -398,6 +398,55 @@ module.exports = (sequelize) => {
     }
   );
 
+  const anonymousUser = sequelize.define(
+    "anonymous_user",
+    {
+      anon_user_uuid: {
+        type: DataTypes.UUID,
+        primaryKey: true,
+        allowNull: false,
+      },
+      latitude: {
+        type: DataTypes.DOUBLE,
+        allowNull: true,
+      },
+      longitude: {
+        type: DataTypes.DOUBLE,
+        allowNull: true,
+      },
+      city: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      device_type: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      browser: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      os: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      created_by: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        defaultValue: "system",
+      },
+      created_at: {
+        type: DataTypes.DATE,
+        defaultValue: sequelize.literal("NOW()"),
+      },
+    },
+    {
+      tableName: "anon_users", // table name
+      schema: "kapehan", // schema name
+      timestamps: false, // since created_at is manually handled
+    }
+  );
+
   // --------------------
   // Associations
   // --------------------
@@ -550,5 +599,6 @@ module.exports = (sequelize) => {
     MenuItem,
     MenuItemPrice,
     CoffeeShopReview,
+    anonymousUser
   };
 };
