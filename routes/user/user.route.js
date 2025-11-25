@@ -7,7 +7,7 @@ const {
 } = require("../../controllers/users/users.controller");
 const { authMiddleware } = require("../../middleware/middleware");
 const { AccessLevels } = require("../../utils/accessLevels.js");
-const { updateAnonymousUser } = require("../../controllers/users/anonymous.controller"); // added
+const { updateUserLocation } = require("../../controllers/users/anonymous.controller"); // renamed
 
 async function userRoutes(fastify) {
   fastify.post("/user/login", loginUserController);
@@ -22,12 +22,12 @@ async function userRoutes(fastify) {
     getUserDataController
   );
   fastify.post(
-    "/user/anon/update",
+    "/user/location",
     {
       preHandler: authMiddleware,
       config: { access: AccessLevels.GUEST },
     },
-    updateAnonymousUser // delegate logic
+    updateUserLocation // renamed from updateAnonymousUser
   );
 
   fastify.post("/user/refreshToken", refreshTokenController);

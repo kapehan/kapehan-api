@@ -55,6 +55,14 @@ async function loginUserController(req, reply) {
         maxAge: 60 * 60 * 24 * 7, // 7 days
       });
 
+    // Clear anonymous token on login
+    reply.clearCookie("sb-access-anon-token", {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "Strict",
+      path: "/",
+    });
+
     return reply.send(sendSuccess({ id: userId }, "Login successful"));
   } catch (error) {
     console.error("Login controller error:", error);
@@ -78,6 +86,14 @@ async function logoutUserController(req, reply) {
     });
 
     reply.clearCookie("sb-refresh-token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+      path: "/",
+    });
+
+    // Clear anonymous token on logout
+    reply.clearCookie("sb-access-anon-token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "Strict",

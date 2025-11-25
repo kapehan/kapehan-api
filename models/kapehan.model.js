@@ -398,13 +398,18 @@ module.exports = (sequelize) => {
     }
   );
 
-  const anonymousUser = sequelize.define(
-    "anonymous_user",
+  const UserLocationLog = sequelize.define(
+    "user_location_logs",
     {
-      anon_user_uuid: {
+      user_id: {
         type: DataTypes.UUID,
-        primaryKey: true,
+        primaryKey: true, // single row per user
         allowNull: false,
+      },
+      is_anonymous: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
       },
       latitude: {
         type: DataTypes.DOUBLE,
@@ -430,20 +435,16 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
-      created_by: {
-        type: DataTypes.TEXT,
-        allowNull: false,
-        defaultValue: "system",
-      },
       created_at: {
         type: DataTypes.DATE,
+        allowNull: false,
         defaultValue: sequelize.literal("NOW()"),
       },
     },
     {
-      tableName: "anon_users", // table name
-      schema: "kapehan", // schema name
-      timestamps: false, // since created_at is manually handled
+      tableName: "user_location_logs", 
+      schema: "kapehan",              
+      timestamps: false,              
     }
   );
 
@@ -599,6 +600,6 @@ module.exports = (sequelize) => {
     MenuItem,
     MenuItemPrice,
     CoffeeShopReview,
-    anonymousUser
+    UserLocationLog
   };
 };
