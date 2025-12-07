@@ -7,7 +7,9 @@ const {
 } = require("../../controllers/users/users.controller");
 const { authMiddleware } = require("../../middleware/middleware");
 const { AccessLevels } = require("../../utils/accessLevels.js");
-const { updateUserLocation } = require("../../controllers/users/anonymous.controller"); // renamed
+const {
+  updateUserLocation,
+} = require("../../controllers/users/anonymous.controller"); // renamed
 
 async function userRoutes(fastify) {
   fastify.post("/user/login", loginUserController);

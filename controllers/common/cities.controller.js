@@ -4,4 +4,8 @@ const findAll = async (req) => {
   return await cities.findAll(req.query);
 };
 
-module.exports = { findAll };
+const getCityShopCounts = async (req) => {
+  return await cities.getCityShopCounts();
+};
+
+module.exports = { findAll, getCityShopCounts };

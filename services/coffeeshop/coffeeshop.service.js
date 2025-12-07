@@ -21,6 +21,11 @@ const {
   formatCoffeeShop,
   formatCoffeeShopById,
 } = require("../../utils/formatResponse");
+const {
+  haversineKm,
+  boundingBox,
+  annotateAndFilterByDistance,
+} = require("../../utils/geo");
 
 const create = async (body) => {
   try {
@@ -272,8 +277,18 @@ const findAll = async (query, reply) => {
       where.rating = { [Op.gte]: parseFloat(normalizedQuery.minrating) };
     }
     if (normalizedQuery.city) {
-      where.city = normalizedQuery.city;
+      const normalizedCity = String(normalizedQuery.city)
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, "_");
+      where.city = normalizedCity;
     }
+
+    // Geo params
+    const lat = query.lat != null ? parseFloat(query.lat) : null;
+    const lng = query.lng != null ? parseFloat(query.lng) : null;
+    const radiusKm = query.radiusKm != null ? parseFloat(query.radiusKm) : null;
+    const sortByDistance = isFinite(lat) && isFinite(lng);
 
     // Build filters for junction tables
     const amenityFilter = normalizedQuery.amenities
@@ -283,77 +298,66 @@ const findAll = async (query, reply) => {
       ? normalizedQuery.vibes.split(",").map((s) => s.trim()).filter(Boolean)
       : null;
 
-    const limit = parseInt(normalizedQuery.limit) || 20;
-    const page = parseInt(normalizedQuery.page) || 1;
-    const offset = (page - 1) * limit;
-
+    // Define include BEFORE queries (fixes ReferenceError)
     const include = [
-      // Filter on junction table coffee_shop_amenities
       {
         model: coffee_shop_amenities,
         as: "amenities",
         required: !!amenityFilter && amenityFilter.length > 0,
         where: amenityFilter ? { amenity_value: { [Op.in]: amenityFilter } } : undefined,
-        include: [
-          {
-            model: amenities,
-            as: "amenity",
-            attributes: ["amenity_name", "amenity_value"],
-            // no where here; only for label data
-          },
-        ],
+        include: [{ model: amenities, as: "amenity", attributes: ["amenity_name", "amenity_value"] }],
       },
-      // Filter on junction table coffee_shop_vibes
       {
         model: coffee_shop_vibes,
         as: "vibes",
         required: !!vibeFilter && vibeFilter.length > 0,
         where: vibeFilter ? { vibe_value: { [Op.in]: vibeFilter } } : undefined,
-        include: [
-          {
-            model: vibes,
-            as: "vibe",
-            attributes: ["vibe_name", "vibe_value"],
-            // no where here; only for label data
-          },
-        ],
+        include: [{ model: vibes, as: "vibe", attributes: ["vibe_name", "vibe_value"] }],
       },
-      {
-        model: cities,
-        as: "city_info",
-        required: !!normalizedQuery.city,
-        attributes: ["city_name", "city_value"],
-      },
+      { model: cities, as: "city_info", required: !!normalizedQuery.city, attributes: ["city_name", "city_value"] },
       { model: opening_hours, as: "opening_hours", required: false },
-      {
-        model: payment_method,
-        as: "payment_methods",
-        required: false,
-        attributes: ["type"],
-      },
+      { model: payment_method, as: "payment_methods", required: false, attributes: ["type"] },
     ];
 
-    const total = await coffee_shops.count({
-      where,
-      distinct: true,
-      include,
+    // Pagination params
+    const limit = parseInt(query.limit) || 20;
+    const page = parseInt(query.page) || 1;
+    const offset = (page - 1) * limit;
+
+    // If we have geo, apply a coarse bounding box to reduce rows
+    if (sortByDistance && radiusKm && isFinite(radiusKm)) {
+      const bbox = boundingBox(lat, lng, radiusKm);
+      where.latitude = { [Op.between]: [bbox.minLat, bbox.maxLat] };
+      where.longitude = { [Op.between]: [bbox.minLon, bbox.maxLon] };
+    }
+
+    // Branch: no lat/lng -> original paginated query
+    if (!sortByDistance) {
+      const total = await coffee_shops.count({ where, distinct: true, include });
+      const rows = await coffee_shops.findAll({ where, include, limit, offset, distinct: true });
+      const formattedRows = rows.map(formatCoffeeShop);
+      const pageInfo = { total, page, limit, totalPages: Math.ceil(total / limit) };
+      return sendSuccess(formattedRows, "Coffee shops fetched successfully", pageInfo);
+    }
+
+    // Branch: with lat/lng -> fetch, annotate distance, sort, paginate in-memory
+    const rows = await coffee_shops.findAll({ where, include, distinct: true });
+
+    let annotated = annotateAndFilterByDistance(rows, lat, lng, radiusKm);
+    annotated.sort((a, b) => {
+      if (a.distanceKm == null) return 1;
+      if (b.distanceKm == null) return -1;
+      return a.distanceKm - b.distanceKm;
     });
 
-    const rows = await coffee_shops.findAll({
-      where,
-      include,
-      limit,
-      offset,
-      distinct: true,
+    const total = annotated.length;
+    const paged = annotated.slice(offset, offset + limit);
+    const formattedRows = paged.map(({ row, distanceKm }) => {
+      const f = formatCoffeeShop(row);
+      f.distanceKm = distanceKm;
+      return f;
     });
-
-    const formattedRows = rows.map(formatCoffeeShop);
-    const pageInfo = {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    const pageInfo = { total, page, limit, totalPages: Math.ceil(total / limit) };
 
     return sendSuccess(formattedRows, "Coffee shops fetched successfully", pageInfo);
   } catch (error) {
@@ -422,4 +426,63 @@ const findBySlug = async (params, reply) => {
   }
 };
 
-module.exports = { create, findAll, findBySlug };
+const findMenubyCoffeeShopSlug = async (params, reply) => {
+  try {
+    const { slug } = params;
+    if (!slug) return sendError("Slug is required");
+
+    const shop = await coffee_shops.findOne({
+      where: { slug },
+      attributes: ["id", "name", "slug"],
+      include: [
+        {
+          model: menu_item,
+          as: "menuItems", // match model alias
+          required: false,
+          attributes: ["id", "name", "description", "category", "has_variants"],
+          include: [
+            {
+              model: menu_item_price,
+              as: "prices", // match model alias
+              required: false,
+              attributes: ["size", "price"],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!shop) return sendError("Coffee shop not found", 404);
+
+    const items = (shop.menuItems || []).map((mi) => ({
+      id: mi.id,
+      name: mi.name,
+      description: mi.description,
+      category: mi.category,
+      has_variants: !!mi.has_variants,
+      variants: (mi.prices || [])
+        .filter((p) => p.size != null)
+        .map((p) => ({ size: p.size, price: Number(p.price) })),
+      price: (() => {
+        const base = (mi.prices || []).find((p) => p.size == null);
+        return base ? Number(base.price) : null;
+      })(),
+    }));
+
+    const menuByCategory = items.reduce((acc, item) => {
+      if (!acc[item.category]) acc[item.category] = [];
+      acc[item.category].push(item);
+      return acc;
+    }, {});
+
+    return sendSuccess(
+      { menu: menuByCategory },
+      "Menu fetched successfully"
+    );
+  } catch (error) {
+    console.error("❌ Error fetching menu:", error);
+    return sendError(`Failed to fetch menu: ${error.message}`);
+  }
+};
+
+module.exports = { create, findAll, findBySlug, findMenubyCoffeeShopSlug };

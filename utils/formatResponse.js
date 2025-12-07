@@ -92,6 +92,7 @@ const formatCoffeeShopById = (shop) => {
     imageUrl: shop.image_url || shop.imageUrl,
     facebook: shop.facebook || [],
     instagram: shop.instagram,
+    review_count: shop.review_count || 0,
 
     // ✅ Add formatted payment methods here
     payment_methods: (shop.payment_methods || []).map((pm) => ({

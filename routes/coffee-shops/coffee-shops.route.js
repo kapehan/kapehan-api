@@ -23,4 +23,13 @@ module.exports.coffeeshop = (app) => {
     },
     controller.findBySlug
   );
+
+  app.get(
+    "/shop/menu/:slug",
+    {
+      preHandler: authMiddleware,
+      config: { access: AccessLevels.GUEST },
+    },
+    controller.findMenubyCoffeeShopSlug
+  );
 };

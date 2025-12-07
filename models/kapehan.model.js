@@ -72,6 +72,7 @@ module.exports = (sequelize) => {
       slug: { type: DataTypes.STRING, allowNull: false },
       description: { type: DataTypes.TEXT },
       address: { type: DataTypes.TEXT },
+      review_count: {type: DataTypes.BIGINT},
       city: { type: DataTypes.STRING },
       email: { type: DataTypes.STRING },
       rating: { type: DataTypes.DECIMAL(3, 2), defaultValue: 0 },
@@ -442,9 +443,51 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: "user_location_logs", 
-      schema: "kapehan",              
-      timestamps: false,              
+      tableName: "user_location_logs",
+      schema: "kapehan",
+      timestamps: false,
+    }
+  );
+
+  const RecentUserLocationSearch = sequelize.define(
+    "recent_user_location_search",
+    {
+      id: {
+        type: DataTypes.BIGINT, // bigserial equivalent
+        primaryKey: true,
+        autoIncrement: true, // auto-increment
+        allowNull: false,
+      },
+      lat: {
+        type: DataTypes.DOUBLE, // latitude
+        allowNull: false,
+      },
+      lon: {
+        type: DataTypes.DOUBLE, // longitude
+        allowNull: false,
+      },
+      postcode: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      address: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      city: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: sequelize.literal("NOW()"),
+      },
+    },
+    {
+      tableName: "recent_user_location_search",
+      schema: "kapehan",
+      timestamps: false, // we are using our own created_at
     }
   );
 
@@ -531,7 +574,8 @@ module.exports = (sequelize) => {
     as: "coffee_shop",
   });
 
-  // CoffeeShop has many MenuItems
+  // CoffeeShop has many MenuItems (alias: menuItems)
+  // MenuItem has many MenuItemPrices (alias: prices)
   CoffeeShops.hasMany(MenuItem, {
     foreignKey: "coffee_shop_id",
     as: "menuItems",
@@ -600,6 +644,7 @@ module.exports = (sequelize) => {
     MenuItem,
     MenuItemPrice,
     CoffeeShopReview,
-    UserLocationLog
+    UserLocationLog,
+    RecentUserLocationSearch 
   };
 };
