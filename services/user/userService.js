@@ -11,9 +11,11 @@
 
 import { supabaseAnon } from "../../helpers/supabaseRoleConfig.js";
 import { getSupabaseWithAuth } from "../../helpers/supaBaseClientWithId.js";
-import { createClient } from "@supabase/supabase-js";
+import db from "../db.service.js";
+const { users } = db;
 
-export const registerUser = async (email, password, city, username) => {
+export const registerUser = async (email, password, city, username, name, gender) => {
+  console.log(name)
   try {
     // Attempt to sign up the user
     const { data: signUpData, error: signUpError } = await supabaseAnon.auth.signUp(
@@ -22,8 +24,8 @@ export const registerUser = async (email, password, city, username) => {
         password,
         options: {
           data: {
-            role: "user", // Optional: metadata
-            display_name: username, // Add username to user metadata
+            role: "user",
+            display_name: username,
           },
         },
       }
@@ -31,7 +33,7 @@ export const registerUser = async (email, password, city, username) => {
 
     // Handle sign-up errors
     if (signUpError) {
-      console.error("Sign-up error details:", signUpError); // Log full error details
+      console.error("Sign-up error details:", signUpError);
       throw new Error(
         `Sign-up failed: ${signUpError.message || "Unknown error"}`
       );
@@ -39,35 +41,52 @@ export const registerUser = async (email, password, city, username) => {
 
     const userId = signUpData.user?.id;
     if (!userId) {
-      console.error("Sign-up response missing user ID:", signUpData); // Log the response
+      console.error("Sign-up response missing user ID:", signUpData);
       throw new Error("User ID not returned from sign-up");
     }
 
-    // Insert additional user info into your own table
-    const { data: insertData, error: insertError } = await supabase
-      .from("users")
-      .insert({
+    // Insert using Sequelize (works with kapehan schema)
+    let insertData;
+    try {
+      insertData = await users.create({
         id: userId,
         email: email,
         city: city,
         role: "user",
-        username: username, // Insert username into your custom table
+        full_name: name,
+        username: username,
+        gender: gender,
       });
+    } catch (insertError) {
+      console.error("Insert error details:", insertError);
 
-    // Handle insert errors
-    if (insertError) {
-      console.error("Insert error details:", insertError); // Log full error details
+      // Attempt to delete the Supabase user if possible
+      try {
+        await supabaseAnon.auth.admin.deleteUser(userId);
+        console.log("Rolled back Supabase user creation due to DB insert failure.");
+      } catch (deleteError) {
+        console.error("Failed to rollback Supabase user:", deleteError);
+      }
+
       throw new Error(
-        `Insert into user_table failed: ${
-          insertError.message || "Unknown error"
-        }`
+        `Insert into user_table failed: ${insertError.message || "Unknown error"}`
       );
     }
 
-    console.log("Insert success:", insertData); // Log success response
-    return signUpData;
+    console.log("✅ Insert success:", insertData.toJSON());
+
+    // Return tokens for immediate login
+    const accessToken = signUpData.session?.access_token;
+    const refreshToken = signUpData.session?.refresh_token;
+
+    return {
+      isSuccess: true,
+      accessToken,
+      refreshToken,
+      userId,
+    };
   } catch (error) {
-    console.error("Error in registerUser:", error); // Log the full error object
+    console.error("Error in registerUser:", error);
     throw new Error(
       error.message || "An unknown error occurred during user registration"
     );
@@ -131,8 +150,6 @@ export const logoutUser = async () => {
 };
 
 export const getUserData = async (userId, accessToken) => {
-  const supabaseUser = getSupabaseWithAuth(accessToken); // ✅ pass token, not id
-
   try {
     console.log("userId", userId);
 
@@ -140,22 +157,14 @@ export const getUserData = async (userId, accessToken) => {
       throw new Error("User ID is missing or invalid.");
     }
 
-    const { data, error } = await supabaseUser
-      .from("users")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
+    // Use Sequelize model for kapehan.users
+    const user = await users.findOne({ where: { id: userId } });
 
-    if (error) {
-      console.error("Supabase error:", error);
-      throw new Error("Error retrieving user data.");
-    }
-
-    if (!data) {
+    if (!user) {
       throw new Error("User not found or access denied by RLS.");
     }
 
-    return data;
+    return user.toJSON();
   } catch (err) {
     console.error("getUserData exception:", err);
     throw new Error(
@@ -165,8 +174,6 @@ export const getUserData = async (userId, accessToken) => {
 };
 
 export const updateUserData = async (userId, accessToken, data) => {
-  const supabaseUser = getSupabaseWithAuth(accessToken); // ✅ pass token, not id
-
   const { username, city } = data;
 
   try {
@@ -174,29 +181,24 @@ export const updateUserData = async (userId, accessToken, data) => {
       throw new Error("User ID is required to update user data.");
     }
 
-    const { data: updatedData, error: tableError } = await supabaseUser
-      .from("users")
-      .update({
-        username: username,
-        city: city,
-      })
-      .eq("id", userId)
-      .select("*");
+    // Use Sequelize model for kapehan.users
+    const [affected] = await users.update(
+      { username, city },
+      { where: { id: userId } }
+    );
 
-    console.log("Query result:", { updatedData, tableError });
-
-    if (tableError) {
-      console.error("Error updating users:", tableError);
-      throw new Error("Error updating user data in the database.");
-    }
-
-    if (!updatedData || updatedData.length === 0) {
+    if (!affected) {
       throw new Error("User not found or update failed in users.");
     }
 
-    console.log("User data updated successfully in users:", updatedData);
+    const updatedUser = await users.findOne({ where: { id: userId } });
 
-    return updatedData[0]; // Return the updated user data
+    if (!updatedUser) {
+      throw new Error("User not found after update.");
+    }
+
+    console.log("User data updated successfully in users:", updatedUser.toJSON());
+    return updatedUser.toJSON();
   } catch (err) {
     console.error("updateUserData exception:", err);
     throw new Error(
@@ -209,10 +211,6 @@ export const refreshSession = async (refreshToken) => {
   if (!refreshToken) return { data: null, error: "No refresh token" };
 
   try {
-    // ✅ Create a NEW isolated Supabase client
-
-
-    // ✅ Use refreshSession instead of setSession
     const { data, error } = await supabaseAnon.auth.refreshSession({
       refresh_token: refreshToken,
     });

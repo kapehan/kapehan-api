@@ -5,4 +5,5 @@ module.exports.coffeeshop = (app) => {
   app.get("/cities", citiesCtrl.findAll);
   app.get("/vibes", vibesCtrl.findAll);
   app.get("/amenities", amenitiesCtrl.findAll);
+  app.get("/cities/shop-counts", citiesCtrl.getCityShopCounts);
 };

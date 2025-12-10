@@ -1,4 +1,4 @@
-const { DataTypes } = require("sequelize");
+const { DataTypes, Op } = require("sequelize");
 
 module.exports = (sequelize) => {
   // --------------------
@@ -17,6 +17,7 @@ module.exports = (sequelize) => {
       city: { type: DataTypes.STRING }, // references cities.city_value
       role: { type: DataTypes.STRING, defaultValue: "user" },
       username: { type: DataTypes.STRING, allowNull: false, unique: true },
+      gender: {type: DataTypes.STRING},
       created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
     },
     {
@@ -72,9 +73,10 @@ module.exports = (sequelize) => {
       slug: { type: DataTypes.STRING, allowNull: false },
       description: { type: DataTypes.TEXT },
       address: { type: DataTypes.TEXT },
+      review_count: {type: DataTypes.BIGINT},
       city: { type: DataTypes.STRING },
       email: { type: DataTypes.STRING },
-      rating: { type: DataTypes.DECIMAL(3, 2), defaultValue: 0 },
+      rating: { type: DataTypes.DECIMAL(3, 2), defaultValue: 5 },
       image_url: { type: DataTypes.TEXT },
       founded: { type: DataTypes.DATE },
       status: { type: DataTypes.STRING, defaultValue: "pending" },
@@ -88,6 +90,10 @@ module.exports = (sequelize) => {
       tableName: "coffee_shops",
       schema: "kapehan",
       timestamps: false,
+      // Only show non-pending by default
+      defaultScope: {
+        where: { status: { [Op.ne]: "pending" } },
+      },
     }
   );
 
@@ -398,13 +404,18 @@ module.exports = (sequelize) => {
     }
   );
 
-  const anonymousUser = sequelize.define(
-    "anonymous_user",
+  const UserLocationLog = sequelize.define(
+    "user_location_logs",
     {
-      anon_user_uuid: {
+      user_id: {
         type: DataTypes.UUID,
-        primaryKey: true,
+        primaryKey: true, // single row per user
         allowNull: false,
+      },
+      is_anonymous: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
       },
       latitude: {
         type: DataTypes.DOUBLE,
@@ -430,20 +441,58 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
-      created_by: {
-        type: DataTypes.TEXT,
-        allowNull: false,
-        defaultValue: "system",
-      },
       created_at: {
         type: DataTypes.DATE,
+        allowNull: false,
         defaultValue: sequelize.literal("NOW()"),
       },
     },
     {
-      tableName: "anon_users", // table name
-      schema: "kapehan", // schema name
-      timestamps: false, // since created_at is manually handled
+      tableName: "user_location_logs",
+      schema: "kapehan",
+      timestamps: false,
+    }
+  );
+
+  const RecentUserLocationSearch = sequelize.define(
+    "recent_user_location_search",
+    {
+      id: {
+        type: DataTypes.BIGINT, // bigserial equivalent
+        primaryKey: true,
+        autoIncrement: true, // auto-increment
+        allowNull: false,
+      },
+      lat: {
+        type: DataTypes.DOUBLE, // latitude
+        allowNull: false,
+      },
+      lon: {
+        type: DataTypes.DOUBLE, // longitude
+        allowNull: false,
+      },
+      postcode: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      address: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      city: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: sequelize.literal("NOW()"),
+      },
+    },
+    {
+      tableName: "recent_user_location_search",
+      schema: "kapehan",
+      timestamps: false, // we are using our own created_at
     }
   );
 
@@ -530,7 +579,8 @@ module.exports = (sequelize) => {
     as: "coffee_shop",
   });
 
-  // CoffeeShop has many MenuItems
+  // CoffeeShop has many MenuItems (alias: menuItems)
+  // MenuItem has many MenuItemPrices (alias: prices)
   CoffeeShops.hasMany(MenuItem, {
     foreignKey: "coffee_shop_id",
     as: "menuItems",
@@ -599,6 +649,7 @@ module.exports = (sequelize) => {
     MenuItem,
     MenuItemPrice,
     CoffeeShopReview,
-    anonymousUser
+    UserLocationLog,
+    RecentUserLocationSearch 
   };
 };

@@ -8,9 +8,36 @@ const { getOrCreateAnonymousUser } = require("../users/anonymous.controller");
  */
 async function registerUserController(req, reply) {
   try {
-    const { email, password, city, username } = req.body;
+    const { email, password, city, username, name, gender } = req.body;
+    console.log("req body", req.body);
 
-    const data = await userService.registerUser(email, password, city, username);
+    const data = await userService.registerUser(email, password, city, username, name, gender);
+
+    const isProduction = process.env.NODE_ENV === "production";
+    reply
+      .setCookie("sb-access-token", data.accessToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "Strict" : "Lax",
+        path: "/",
+        maxAge: 60 * 60,
+      })
+      .setCookie("sb-refresh-token", data.refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "Strict" : "Lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+
+    // Clear anonymous token on register (force overwrite with empty value and immediate expiry)
+    reply.setCookie("sb-access-anon-token", "", {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "Strict",
+      path: "/",
+      expires: new Date(0),
+    });
 
     return reply.code(201).send(sendSuccess(data, "User registered successfully"));
   } catch (error) {
@@ -55,6 +82,14 @@ async function loginUserController(req, reply) {
         maxAge: 60 * 60 * 24 * 7, // 7 days
       });
 
+    // Clear anonymous token on login
+    reply.clearCookie("sb-access-anon-token", {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "Strict",
+      path: "/",
+    });
+
     return reply.send(sendSuccess({ id: userId }, "Login successful"));
   } catch (error) {
     console.error("Login controller error:", error);
@@ -78,6 +113,14 @@ async function logoutUserController(req, reply) {
     });
 
     reply.clearCookie("sb-refresh-token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+      path: "/",
+    });
+
+    // Clear anonymous token on logout
+    reply.clearCookie("sb-access-anon-token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "Strict",

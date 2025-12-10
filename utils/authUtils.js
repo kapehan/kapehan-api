@@ -36,12 +36,12 @@ export async function authenticateUser(request, reply) {
   // 1) Determine required access first
   const requiredAccess = request.routeOptions?.config?.access || AccessLevels.GUEST;
 
-  // 2) GUEST routes now require anonymous OR authenticated token
+  // 2) GUEST routes allow anyone (optional token tracking)
   if (requiredAccess === AccessLevels.GUEST) {
     const anonToken = request.cookies?.["sb-access-anon-token"] || null;
     const accessToken = request.cookies?.["sb-access-token"] || null;
 
-    // Try anonymous token first
+    // Try anonymous token first (optional)
     if (anonToken) {
       try {
         const { data, error } = await supabaseAnon.auth.getUser(anonToken);
@@ -54,9 +54,20 @@ export async function authenticateUser(request, reply) {
       }
     }
 
-    // Try authenticated token
+    // Try authenticated token (optional)
     if (accessToken) {
       try {
+        const extractRole = (userObj) => {
+          if (!userObj) return "anon";
+          if (userObj.app_metadata?.role) return userObj.app_metadata.role;
+          const rolesArray = userObj.app_metadata?.roles || [];
+          if (Array.isArray(rolesArray) && rolesArray.length > 0) {
+            if (rolesArray.includes("admin")) return "admin";
+            if (rolesArray.includes("coffee_shop_owner")) return "coffee_shop_owner";
+            return "user";
+          }
+          return "user";
+        };
         const { data, error } = await getUserFromToken(accessToken);
         if (!error && data?.user) {
           const role = extractRole(data.user);
@@ -68,9 +79,8 @@ export async function authenticateUser(request, reply) {
       }
     }
 
-    // No valid token: reject
-    const payload = sendError("Unauthorized: Anonymous or authenticated token required.");
-    reply.code(401).send(payload);
+    // No token or invalid: allow as pure guest
+    request.user = { isAuthenticated: false, role: "guest", id: null, user: null };
     return;
   }
 
