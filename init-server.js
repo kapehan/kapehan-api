@@ -64,8 +64,18 @@ async function createServer() {
   await fastify.register(cookie, { parseOptions: {} });
   await fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
-  // Register routes
+  // Register routes under /v1
   await fastify.register(require("./routes/"), { prefix: "/v1" });
+
+  // Root route to avoid 404 on /
+  fastify.get("/", async (req, reply) => {
+    reply.send({
+      status: "ok",
+      message: "Kapehan API",
+      prefix: "/v1",
+      hint: "Use /v1/* endpoints",
+    });
+  });
 
   // 404 handler
   fastify.setNotFoundHandler((req, reply) => {
