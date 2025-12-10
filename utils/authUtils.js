@@ -1,7 +1,7 @@
 // utils/authUtils.js
-import {supabaseAnon} from "../helpers/supabaseRoleConfig.js";
-import { AccessLevels } from "../utils/accessLevels.js";
-import { sendError } from "./response.js";
+const { supabaseAnon } = require("../helpers/supabaseRoleConfig.js");
+const { AccessLevels } = require("../utils/accessLevels.js");
+const { sendError } = require("./response.js");
 
 // Helper: get user using provided access token via anon client
 async function getUserFromToken(token) {
@@ -32,7 +32,7 @@ async function refreshSession(accessToken, refreshToken) {
   }
 }
 
-export async function authenticateUser(request, reply) {
+async function authenticateUser(request, reply) {
   // 1) Determine required access first
   const requiredAccess = request.routeOptions?.config?.access || AccessLevels.GUEST;
 
@@ -188,3 +188,5 @@ export async function authenticateUser(request, reply) {
       return;
   }
 }
+
+module.exports = { authenticateUser };
