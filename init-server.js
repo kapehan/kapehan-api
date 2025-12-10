@@ -37,7 +37,8 @@ async function createServer() {
       "http://127.0.0.1:3000",
       "https://kapehan.ph",
       "localhost:3000",
-      "https://god.kapehan.ph",
+      "https://v1.kapehan.ph/",
+      "https://v1.kapehan.ph",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
@@ -54,13 +55,17 @@ async function createServer() {
 
   // 404 handler
   fastify.setNotFoundHandler((req, reply) => {
-    reply.code(404).send({ message: `Route ${req.method}:${req.url} not found` });
+    reply
+      .code(404)
+      .send({ message: `Route ${req.method}:${req.url} not found` });
   });
 
   // Error handler
   fastify.setErrorHandler((error, req, reply) => {
     fastify.log.error(error);
-    reply.code(error.statusCode || 500).send({ error: error.message || "Internal Server Error" });
+    reply
+      .code(error.statusCode || 500)
+      .send({ error: error.message || "Internal Server Error" });
   });
 
   await initDatabase();
