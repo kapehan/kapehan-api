@@ -1,0 +1,30 @@
+name: Deploy to Vercel
+
+on:
+  push:
+    branches:
+      - main   # only deploy on pushes to main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Install dependencies (optional if needed)
+      - name: Install dependencies
+        run: npm install
+
+      # 3. Build the project (if you have a build step)
+      - name: Build project
+        run: npm run build
+
+      # 4. Deploy to Vercel
+      - name: Deploy to Vercel
+        run: npx vercel --prod --token ${{ secrets.VERCEL_TOKEN }} --confirm --yes
+        env:
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}      # updated for team projects
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

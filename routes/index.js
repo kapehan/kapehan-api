@@ -1,12 +1,12 @@
-const fs = require('fs')
-const path = require('path')
+// routes/index.js
+const fs = require("fs");
+const path = require("path");
 
 async function loadRoutesRecursively(dir, app) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name)
-
+    const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       await loadRoutesRecursively(fullPath, app)
     } else if (
@@ -16,18 +16,23 @@ async function loadRoutesRecursively(dir, app) {
     ) {
       const routeModule = require(fullPath)
       const route = routeModule.default || routeModule
-
-    for(let key in route){
-        const read_route = route[key];
-        if (typeof  read_route === 'function') {
-            await read_route(app)
+    
+        if(typeof route === 'function'){
+            await route(app);
+            continue;
         }
-    }
+
+        for(let key in route){
+            const read_route = route[key];
+            if (typeof  read_route === 'function') {
+                await read_route(app)
+            }
+        }
     }
   }
 }
 
-module.exports = async function (app, opts) {
-  // __dirname here is the directory of this index.js file
-  await loadRoutesRecursively(__dirname, app)
-}
+module.exports = async function (fastify) {
+  const routesPath = path.join(__dirname);
+  await loadRoutesRecursively(routesPath, fastify);
+};
