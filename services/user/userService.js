@@ -14,7 +14,7 @@ import { getSupabaseWithAuth } from "../../helpers/supaBaseClientWithId.js";
 import db from "../db.service.js";
 const { users } = db;
 
-export const registerUser = async (email, password, city, username, name) => {
+export const registerUser = async (email, password, city, username, name, gender) => {
   console.log(name)
   try {
     // Attempt to sign up the user
@@ -55,6 +55,7 @@ export const registerUser = async (email, password, city, username, name) => {
         role: "user",
         full_name: name,
         username: username,
+        gender: gender,
       });
     } catch (insertError) {
       console.error("Insert error details:", insertError);

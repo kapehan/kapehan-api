@@ -8,10 +8,10 @@ const { getOrCreateAnonymousUser } = require("../users/anonymous.controller");
  */
 async function registerUserController(req, reply) {
   try {
-    const { email, password, city, username, name } = req.body;
+    const { email, password, city, username, name, gender } = req.body;
     console.log("req body", req.body);
 
-    const data = await userService.registerUser(email, password, city, username, name);
+    const data = await userService.registerUser(email, password, city, username, name, gender);
 
     const isProduction = process.env.NODE_ENV === "production";
     reply

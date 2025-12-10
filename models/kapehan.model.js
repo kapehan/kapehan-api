@@ -1,4 +1,4 @@
-const { DataTypes } = require("sequelize");
+const { DataTypes, Op } = require("sequelize");
 
 module.exports = (sequelize) => {
   // --------------------
@@ -17,6 +17,7 @@ module.exports = (sequelize) => {
       city: { type: DataTypes.STRING }, // references cities.city_value
       role: { type: DataTypes.STRING, defaultValue: "user" },
       username: { type: DataTypes.STRING, allowNull: false, unique: true },
+      gender: {type: DataTypes.STRING},
       created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
     },
     {
@@ -75,7 +76,7 @@ module.exports = (sequelize) => {
       review_count: {type: DataTypes.BIGINT},
       city: { type: DataTypes.STRING },
       email: { type: DataTypes.STRING },
-      rating: { type: DataTypes.DECIMAL(3, 2), defaultValue: 0 },
+      rating: { type: DataTypes.DECIMAL(3, 2), defaultValue: 5 },
       image_url: { type: DataTypes.TEXT },
       founded: { type: DataTypes.DATE },
       status: { type: DataTypes.STRING, defaultValue: "pending" },
@@ -89,6 +90,10 @@ module.exports = (sequelize) => {
       tableName: "coffee_shops",
       schema: "kapehan",
       timestamps: false,
+      // Only show non-pending by default
+      defaultScope: {
+        where: { status: { [Op.ne]: "pending" } },
+      },
     }
   );
 
