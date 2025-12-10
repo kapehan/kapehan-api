@@ -9,7 +9,9 @@
       }
     }
   ],
-  "cleanUrls": true,
+  "routes": [
+    { "src": "/(.*)", "dest": "init-server.js" }
+  ],
   "git": {
     "deploymentEnabled": {
       "main": true,
