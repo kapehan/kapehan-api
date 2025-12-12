@@ -306,7 +306,7 @@ const findAll = async (query, reply) => {
     const lat = query.lat != null ? parseFloat(query.lat) : null;
     const lng = query.lng != null ? parseFloat(query.lng) : null;
     const radiusKm = query.radiusKm != null ? parseFloat(query.radiusKm) : null;
-    const sortByDistance = isFinite(lat) && isFinite(lng);
+    const sortByDistance = isFinite(lat) && isFinite(lng); // Declare once here
 
     // Build filters for junction tables
     const amenityFilter = normalizedQuery.amenities
@@ -346,8 +346,7 @@ const findAll = async (query, reply) => {
     const cacheKey = JSON.stringify(query);
     
     // Check cache first (skip for geo queries which are dynamic)
-    const sortByDistance = isFinite(lat) && isFinite(lng);
-    if (!sortByDistance && isCacheValid(cacheKey)) {
+    if (!sortByDistance && isCacheValid(cacheKey)) { // Remove duplicate declaration here
       const cached = getCacheKey(cacheKey);
       if (cached) {
         console.log("📦 Cache hit for findAll");
