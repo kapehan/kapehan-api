@@ -27,6 +27,24 @@ const {
   annotateAndFilterByDistance,
 } = require("../../utils/geo");
 
+// Simple in-memory cache (consider Redis for production)
+const queryCache = new Map();
+const CACHE_TTL = 60000; // 1 minute
+
+function getCacheKey(key) {
+  return queryCache.get(key);
+}
+
+function setCacheKey(key, value) {
+  queryCache.set(key, { data: value, timestamp: Date.now() });
+  setTimeout(() => queryCache.delete(key), CACHE_TTL);
+}
+
+function isCacheValid(key) {
+  const cached = queryCache.get(key);
+  return cached && Date.now() - cached.timestamp < CACHE_TTL;
+}
+
 const create = async (body) => {
   try {
     const data = Object.fromEntries(
@@ -288,7 +306,7 @@ const findAll = async (query, reply) => {
     const lat = query.lat != null ? parseFloat(query.lat) : null;
     const lng = query.lng != null ? parseFloat(query.lng) : null;
     const radiusKm = query.radiusKm != null ? parseFloat(query.radiusKm) : null;
-    const sortByDistance = isFinite(lat) && isFinite(lng);
+    const sortByDistance = isFinite(lat) && isFinite(lng); // Declare once here
 
     // Build filters for junction tables
     const amenityFilter = normalizedQuery.amenities
@@ -324,6 +342,18 @@ const findAll = async (query, reply) => {
     const page = parseInt(query.page) || 1;
     const offset = (page - 1) * limit;
 
+    // Generate cache key from query params
+    const cacheKey = JSON.stringify(query);
+    
+    // Check cache first (skip for geo queries which are dynamic)
+    if (!sortByDistance && isCacheValid(cacheKey)) { // Remove duplicate declaration here
+      const cached = getCacheKey(cacheKey);
+      if (cached) {
+        console.log("📦 Cache hit for findAll");
+        return cached.data;
+      }
+    }
+
     // If we have geo, apply a coarse bounding box to reduce rows
     if (sortByDistance && radiusKm && isFinite(radiusKm)) {
       const bbox = boundingBox(lat, lng, radiusKm);
@@ -334,13 +364,35 @@ const findAll = async (query, reply) => {
     // Branch: no lat/lng -> original paginated query
     if (!sortByDistance) {
       const total = await coffee_shops.count({ where, distinct: true, include });
-      const rows = await coffee_shops.findAll({ where, include, limit, offset, distinct: true });
+      const rows = await coffee_shops.findAll({
+        where,
+        include,
+        limit,
+        offset,
+        distinct: true,
+        raw: false, // Keep for associations
+      });
+
       const formattedRows = rows.map(formatCoffeeShop);
-      const pageInfo = { total, page, limit, totalPages: Math.ceil(total / limit) };
-      return sendSuccess(formattedRows, "Coffee shops fetched successfully", pageInfo);
+      const pageInfo = {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      };
+      
+      const response = sendSuccess(
+        formattedRows,
+        "Coffee shops fetched successfully",
+        pageInfo
+      );
+      
+      // Cache the response
+      setCacheKey(cacheKey, response);
+      return response;
     }
 
-    // Branch: with lat/lng -> fetch, annotate distance, sort, paginate in-memory
+    // Branch: with lat/lng (no caching, dynamic results)
     const rows = await coffee_shops.findAll({ where, include, distinct: true });
 
     let annotated = annotateAndFilterByDistance(rows, lat, lng, radiusKm);
@@ -374,9 +426,19 @@ const findBySlug = async (params, reply) => {
       return sendError("Slug is required");
     }
 
+    // Check cache
+    const cacheKey = `shop:${slug}`;
+    if (isCacheValid(cacheKey)) {
+      const cached = getCacheKey(cacheKey);
+      if (cached) {
+        console.log("📦 Cache hit for findBySlug");
+        return cached.data;
+      }
+    }
+
     // Find a single coffee shop where slug matches
     const shop = await coffee_shops.findOne({
-      where: { slug }, // assuming you have a `slug` column in DB
+      where: { slug },
       include: [
         {
           model: coffee_shop_amenities,
@@ -408,7 +470,7 @@ const findBySlug = async (params, reply) => {
           model: payment_method,
           as: "payment_methods",
           required: false,
-          attributes: ["type"], // adjust columns
+          attributes: ["type"],
         },
       ],
     });
@@ -418,8 +480,11 @@ const findBySlug = async (params, reply) => {
     }
 
     const formattedShop = formatCoffeeShopById(shop);
-
-    return sendSuccess(formattedShop, "Coffee shop fetched successfully");
+    const response = sendSuccess(formattedShop, "Coffee shop fetched successfully");
+    
+    // Cache response
+    setCacheKey(cacheKey, response);
+    return response;
   } catch (error) {
     console.error("❌ Error fetching coffee shop:", error);
     return sendError(`Failed to fetch coffee shop: ${error.message}`);

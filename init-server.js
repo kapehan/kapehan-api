@@ -1,6 +1,7 @@
 const Fastify = require("fastify");
 const cors = require("@fastify/cors");
 const rateLimit = require("@fastify/rate-limit");
+const compress = require("@fastify/compress");
 const { sequelize } = require("./services/db.service");
 const config = require("./configs/config");
 const multipart = require("@fastify/multipart");
@@ -30,6 +31,20 @@ async function initDatabase() {
 async function createServer() {
   const fastify = Fastify({ logger: true });
 
+  // Collect registered routes
+  const registeredRoutes = [];
+  fastify.addHook("onRoute", (routeOptions) => {
+    const methods = Array.isArray(routeOptions.method)
+      ? routeOptions.method
+      : [routeOptions.method];
+    const url = routeOptions.path || routeOptions.url || ""; // Fastify may use path or url
+    methods.forEach((m) => {
+      const method = (m || "").toUpperCase();
+      if (!method || !url) return;
+      registeredRoutes.push({ method, url });
+    });
+  });
+
   // Register CORS directly (MUST BE FIRST)
   await fastify.register(cors, {
     origin: [
@@ -45,13 +60,32 @@ async function createServer() {
     allowedHeaders: ["Content-Type", "Authorization"],
   });
 
+  // Add compression early
+  await fastify.register(compress, { threshold: 1024 });
+
   // Register other plugins
   await fastify.register(multipart, { attachFieldsToBody: true });
   await fastify.register(cookie, { parseOptions: {} });
   await fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
-  // Register routes
+  // Tune database pool (if using Sequelize pool)
+  if (sequelize && sequelize.connectionManager && sequelize.connectionManager.pool) {
+    sequelize.connectionManager.pool.max = 20; // increase from default 5
+    sequelize.connectionManager.pool.min = 2;
+  }
+
+  // Register routes under /v1
   await fastify.register(require("./routes/"), { prefix: "/v1" });
+
+  // Root route to avoid 404 on /
+  fastify.get("/", async (req, reply) => {
+    reply.send({
+      status: "ok",
+      message: "Kapehan API",
+      prefix: "/v1",
+      hint: "Use /v1/* endpoints",
+    });
+  });
 
   // 404 handler
   fastify.setNotFoundHandler((req, reply) => {
@@ -70,6 +104,23 @@ async function createServer() {
 
   await initDatabase();
   await fastify.ready();
+
+  // Pretty-print routes as a simple list
+  const unique = new Map();
+  for (const r of registeredRoutes) {
+    const key = `${r.method} ${r.url}`;
+    if (!unique.has(key)) unique.set(key, r);
+  }
+  const lines = Array.from(unique.values())
+    .sort((a, b) => {
+      if (a.url === b.url) return a.method.localeCompare(b.method);
+      return a.url.localeCompare(b.url);
+    })
+    .map((r) => `${r.method.padEnd(6)} ${r.url}`)
+    .join("\n");
+
+  fastify.log.info("Registered routes:\n" + lines);
+
   return fastify;
 }
 
