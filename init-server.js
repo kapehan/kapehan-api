@@ -69,10 +69,9 @@ async function createServer() {
   await fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
   // Tune database pool (if using Sequelize pool)
-  if (sequelize && sequelize.connectionManager) {
+  if (sequelize && sequelize.connectionManager && sequelize.connectionManager.pool) {
     sequelize.connectionManager.pool.max = 20; // increase from default 5
     sequelize.connectionManager.pool.min = 2;
-    sequelize.connectionManager.pool.acquire = 30000; // 30s timeout
   }
 
   // Register routes under /v1
