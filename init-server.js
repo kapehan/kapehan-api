@@ -1,6 +1,7 @@
 const Fastify = require("fastify");
 const cors = require("@fastify/cors");
 const rateLimit = require("@fastify/rate-limit");
+const compress = require("@fastify/compress");
 const { sequelize } = require("./services/db.service");
 const config = require("./configs/config");
 const multipart = require("@fastify/multipart");
@@ -59,10 +60,20 @@ async function createServer() {
     allowedHeaders: ["Content-Type", "Authorization"],
   });
 
+  // Add compression early
+  await fastify.register(compress, { threshold: 1024 });
+
   // Register other plugins
   await fastify.register(multipart, { attachFieldsToBody: true });
   await fastify.register(cookie, { parseOptions: {} });
   await fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
+
+  // Tune database pool (if using Sequelize pool)
+  if (sequelize && sequelize.connectionManager) {
+    sequelize.connectionManager.pool.max = 20; // increase from default 5
+    sequelize.connectionManager.pool.min = 2;
+    sequelize.connectionManager.pool.acquire = 30000; // 30s timeout
+  }
 
   // Register routes under /v1
   await fastify.register(require("./routes/"), { prefix: "/v1" });
