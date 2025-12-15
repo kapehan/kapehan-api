@@ -306,7 +306,7 @@ const findAll = async (query, reply) => {
     const lat = query.lat != null ? parseFloat(query.lat) : null;
     const lng = query.lng != null ? parseFloat(query.lng) : null;
     const radiusKm = query.radiusKm != null ? parseFloat(query.radiusKm) : null;
-    const sortByDistance = isFinite(lat) && isFinite(lng); // Declare once here
+    const sortByDistance = isFinite(lat) && isFinite(lng);
 
     // Build filters for junction tables
     const amenityFilter = normalizedQuery.amenities
@@ -316,26 +316,73 @@ const findAll = async (query, reply) => {
       ? normalizedQuery.vibes.split(",").map((s) => s.trim()).filter(Boolean)
       : null;
 
-    // Define include BEFORE queries (fixes ReferenceError)
-    const include = [
-      {
+    // Include selection (lighter by default; opt-in via include=...)
+    const includeParam = typeof query.include === "string" ? query.include.toLowerCase() : "";
+    const includeSet = new Set(includeParam.split(",").map((s) => s.trim()).filter(Boolean));
+    const includeAll = includeSet.has("all");
+
+    const include = [];
+
+    // City info: only when filtering by city or explicitly requested
+    if (includeAll || normalizedQuery.city || includeSet.has("city") || includeSet.has("city_info")) {
+      include.push({
+        model: cities,
+        as: "city_info",
+        required: !!normalizedQuery.city,
+        attributes: ["city_name", "city_value"],
+      });
+    }
+
+    // Amenities: include only if filtering or explicitly requested
+    const wantAmenities = includeAll || (amenityFilter && amenityFilter.length) || includeSet.has("amenities");
+    if (wantAmenities) {
+      include.push({
         model: coffee_shop_amenities,
         as: "amenities",
-        required: !!amenityFilter && amenityFilter.length > 0,
+        required: !!(amenityFilter && amenityFilter.length),
         where: amenityFilter ? { amenity_value: { [Op.in]: amenityFilter } } : undefined,
-        include: [{ model: amenities, as: "amenity", attributes: ["amenity_name", "amenity_value"] }],
-      },
-      {
+        attributes: ["amenity_value"],
+        // Include metadata only when include contains amenities_meta or "all"
+        include: (includeAll || includeSet.has("amenities_meta"))
+          ? [{ model: amenities, as: "amenity", attributes: ["amenity_name", "amenity_value"] }]
+          : undefined,
+      });
+    }
+
+    // Vibes: include only if filtering or explicitly requested
+    const wantVibes = includeAll || (vibeFilter && vibeFilter.length) || includeSet.has("vibes");
+    if (wantVibes) {
+      include.push({
         model: coffee_shop_vibes,
         as: "vibes",
-        required: !!vibeFilter && vibeFilter.length > 0,
+        required: !!(vibeFilter && vibeFilter.length),
         where: vibeFilter ? { vibe_value: { [Op.in]: vibeFilter } } : undefined,
-        include: [{ model: vibes, as: "vibe", attributes: ["vibe_name", "vibe_value"] }],
-      },
-      { model: cities, as: "city_info", required: !!normalizedQuery.city, attributes: ["city_name", "city_value"] },
-      { model: opening_hours, as: "opening_hours", required: false },
-      { model: payment_method, as: "payment_methods", required: false, attributes: ["type"] },
-    ];
+        attributes: ["vibe_value"],
+        include: (includeAll || includeSet.has("vibes_meta"))
+          ? [{ model: vibes, as: "vibe", attributes: ["vibe_name", "vibe_value"] }]
+          : undefined,
+      });
+    }
+
+    // Opening hours: opt-in
+    if (includeAll || includeSet.has("opening_hours")) {
+      include.push({
+        model: opening_hours,
+        as: "opening_hours",
+        required: false,
+        attributes: ["day_of_week", "open_time", "close_time", "is_closed"],
+      });
+    }
+
+    // Payment methods: opt-in
+    if (includeAll || includeSet.has("payment_methods") || includeSet.has("payment")) {
+      include.push({
+        model: payment_method,
+        as: "payment_methods",
+        required: false,
+        attributes: ["type"],
+      });
+    }
 
     // Pagination params
     const limit = parseInt(query.limit) || 20;
@@ -346,7 +393,7 @@ const findAll = async (query, reply) => {
     const cacheKey = JSON.stringify(query);
     
     // Check cache first (skip for geo queries which are dynamic)
-    if (!sortByDistance && isCacheValid(cacheKey)) { // Remove duplicate declaration here
+    if (!sortByDistance && isCacheValid(cacheKey)) {
       const cached = getCacheKey(cacheKey);
       if (cached) {
         console.log("📦 Cache hit for findAll");
@@ -370,7 +417,8 @@ const findAll = async (query, reply) => {
         limit,
         offset,
         distinct: true,
-        raw: false, // Keep for associations
+        subQuery: false, // avoid expensive subqueries with includes
+        raw: false,
       });
 
       const formattedRows = rows.map(formatCoffeeShop);
@@ -393,7 +441,12 @@ const findAll = async (query, reply) => {
     }
 
     // Branch: with lat/lng (no caching, dynamic results)
-    const rows = await coffee_shops.findAll({ where, include, distinct: true });
+    const rows = await coffee_shops.findAll({
+      where,
+      include,
+      distinct: true,
+      subQuery: false,
+    });
 
     let annotated = annotateAndFilterByDistance(rows, lat, lng, radiusKm);
     annotated.sort((a, b) => {
