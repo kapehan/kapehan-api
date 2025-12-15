@@ -96,20 +96,24 @@ async function buildServer() {
 
   // Error handler
   fastify.setErrorHandler((error, req, reply) => {
-    // Always log error stack for debugging
-    console.error("❌ Fastify error:", error && error.stack ? error.stack : error);
+    // Always log error stack for debugging with request info
+    console.error("❌ Fastify error:", {
+      method: req?.method,
+      url: req?.url,
+      message: error?.message,
+      stack: error?.stack,
+    });
     if (!isServerless && fastify.log && fastify.log.error) fastify.log.error(error);
-    reply
-      .code(error.statusCode || 500)
-      .send({
-        error: error.message || "Internal Server Error",
-        stack: error.stack, // expose stack for debugging (remove in prod if needed)
-      });
+    reply.code(error.statusCode || 500).send({
+      error: error.message || "Internal Server Error",
+      stack: error.stack, // remove in prod if not needed
+    });
   });
 
   await initDatabase();
-  // Don't await fastify.ready() in serverless, only in dev
-  if (!isServerless) await fastify.ready();
+  // Always await ready to ensure hooks/routes are initialized (even on serverless)
+  await fastify.ready();
+  console.log("✅ Fastify is ready");
 
   return fastify;
 }
