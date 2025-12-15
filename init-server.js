@@ -7,12 +7,14 @@ const cookie = require("@fastify/cookie");
 let cachedServer = null;
 let dbInitialized = false;
 
-// Detect production vs serverless (Vercel)
-const isProd = process.env.NODE_ENV === "production";
-const isServerless = !!process.env.VERCEL || process.env.KAPEHAN_SERVERLESS === "1";
+// Detect serverless (Vercel) and production
+const isServerless = !!process.env.VERCEL;
+const isProd = isServerless || process.env.NODE_ENV === "production";
 
 console.log(
-  `[Kapehan] Mode: ${isProd ? "PRODUCTION" : "DEVELOPMENT"} | Platform: ${isServerless ? "SERVERLESS (Vercel)" : "NODE"}`
+  `[Kapehan] Mode: ${isProd ? "PRODUCTION" : "DEVELOPMENT"} | Platform: ${
+    isServerless ? "SERVERLESS (Vercel)" : "NODE"
+  }`
 );
 
 // Database initialization
@@ -21,8 +23,8 @@ async function initDatabase() {
   try {
     await sequelize.authenticate();
     console.log("✅ Connected to Supabase");
-    // Only sync in non-production (never in production)
-    if (!isProd) {
+    // Sync ONLY in local dev (never in prod or serverless)
+    if (!isServerless && !isProd) {
       await sequelize.sync();
       console.log("✅ Tables synced (dev only)");
     }
@@ -37,7 +39,7 @@ async function initDatabase() {
 async function buildServer() {
   const fastify = Fastify({ logger: !isServerless });
 
-  // Only register essential plugins for serverless
+  // Only essential plugins
   await fastify.register(cors, {
     origin: [
       "http://localhost:3000",
@@ -56,7 +58,7 @@ async function buildServer() {
   await fastify.register(cookie, { parseOptions: {} });
 
   // Tune database pool (keep minimal on serverless)
-  if (sequelize && sequelize.connectionManager && sequelize.connectionManager.pool) {
+  if (sequelize?.connectionManager?.pool) {
     const max = isServerless ? 1 : 5;
     const min = isServerless ? 0 : 1;
     sequelize.connectionManager.pool.max = max;
@@ -75,59 +77,46 @@ async function buildServer() {
     };
   }
 
-  // Register routes under /v1
+  // Register routes
   await fastify.register(require("./routes/"), { prefix: "/v1" });
 
-  // Root route to avoid 404 on /
+  // Root
   fastify.get("/", async (req, reply) => {
-    reply.send({
-      status: "ok",
-      message: "Kapehan API",
-      prefix: "/v1",
-      hint: "Use /v1/* endpoints",
-    });
+    reply.send({ status: "ok", message: "Kapehan API", prefix: "/v1" });
   });
 
-  // 404 handler
+  // 404
   fastify.setNotFoundHandler((req, reply) => {
-    reply
-      .code(404)
-      .send({ message: `Route ${req.method}:${req.url} not found` });
+    reply.code(404).send({ message: `Route ${req.method}:${req.url} not found` });
   });
 
   // Error handler
   fastify.setErrorHandler((error, req, reply) => {
-    // Always log error stack for debugging with request info
     console.error("❌ Fastify error:", {
       method: req?.method,
       url: req?.url,
       message: error?.message,
       stack: error?.stack,
     });
-    if (!isServerless && fastify.log && fastify.log.error) fastify.log.error(error);
+    if (!isServerless && fastify.log?.error) fastify.log.error(error);
     reply.code(error.statusCode || 500).send({
       error: error.message || "Internal Server Error",
-      stack: error.stack, // remove in prod if not needed
+      stack: error.stack,
     });
   });
 
   await initDatabase();
-  // Always await ready to ensure hooks/routes are initialized (even on serverless)
   await fastify.ready();
   console.log("✅ Fastify is ready");
-
   return fastify;
 }
 
-// Fastify server creation (returns cached or builds new)
 async function createServer() {
-  if (!cachedServer) {
-    cachedServer = await buildServer();
-  }
+  if (!cachedServer) cachedServer = await buildServer();
   return cachedServer;
 }
 
-// Local development server (start whenever not serverless, regardless of NODE_ENV)
+// Start local server if not serverless (regardless of NODE_ENV)
 if (!isServerless) {
   (async () => {
     try {
@@ -146,7 +135,7 @@ if (!isServerless) {
   })();
 }
 
-// Vercel serverless handler
+// Vercel handler
 module.exports = async (req, res) => {
   try {
     const server = await createServer();
@@ -156,15 +145,11 @@ module.exports = async (req, res) => {
       res.on("error", reject);
     });
   } catch (err) {
-    // Always log error stack for debugging
-    console.error("❌ Serverless handler error:", err && err.stack ? err.stack : err);
+    console.error("❌ Serverless handler error:", err?.stack || err);
     if (!res.writableEnded) {
       res.statusCode = 500;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({
-        error: err && err.message ? err.message : "Internal Server Error",
-        stack: err && err.stack ? err.stack : undefined,
-      }));
+      res.end(JSON.stringify({ error: err?.message || "Internal Server Error", stack: err?.stack }));
     }
   }
 };
