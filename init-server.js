@@ -6,6 +6,7 @@ const { sequelize } = require("./services/db.service");
 const config = require("./configs/config");
 const multipart = require("@fastify/multipart");
 const cookie = require("@fastify/cookie");
+const underPressure = require("@fastify/under-pressure"); // added
 
 let cachedServer = null;
 let dbInitialized = false;
@@ -30,6 +31,12 @@ async function initDatabase() {
 // Fastify server creation
 async function createServer() {
   const fastify = Fastify({ logger: true });
+
+  // Apply backpressure FIRST to shed load early
+  await fastify.register(underPressure, {
+    maxConcurrentRequests: parseInt(process.env.MAX_CONCURRENT || "50"),
+    maxEventLoopDelay: 1000,
+  });
 
   // Collect registered routes
   const registeredRoutes = [];
@@ -68,10 +75,27 @@ async function createServer() {
   await fastify.register(cookie, { parseOptions: {} });
   await fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
-  // Tune database pool (if using Sequelize pool)
+  // Tune database pool (keep small on serverless)
   if (sequelize && sequelize.connectionManager && sequelize.connectionManager.pool) {
-    sequelize.connectionManager.pool.max = 20; // increase from default 5
-    sequelize.connectionManager.pool.min = 2;
+    const isServerless = !!process.env.VERCEL;
+    const max = parseInt(process.env.DB_POOL_MAX || (isServerless ? "2" : "5"));
+    const min = parseInt(process.env.DB_POOL_MIN || (isServerless ? "0" : "1"));
+    sequelize.connectionManager.pool.max = max;
+    sequelize.connectionManager.pool.min = min;
+
+    // Reflect into sequelize options (not strictly required but keeps config coherent)
+    sequelize.options.pool = {
+      ...(sequelize.options.pool || {}),
+      max,
+      min,
+      idle: parseInt(process.env.DB_POOL_IDLE || "10000"),
+      acquire: parseInt(process.env.DB_POOL_ACQUIRE || "20000"),
+      evict: parseInt(process.env.DB_POOL_EVICT || "1000"),
+    };
+    sequelize.options.dialectOptions = {
+      ...(sequelize.options.dialectOptions || {}),
+      keepAlive: true,
+    };
   }
 
   // Register routes under /v1
@@ -104,6 +128,15 @@ async function createServer() {
 
   await initDatabase();
   await fastify.ready();
+
+  // Close DB pool on server close (helps in dev and long-lived processes)
+  fastify.addHook("onClose", async () => {
+    try {
+      await sequelize.close();
+    } catch (e) {
+      fastify.log.error(e);
+    }
+  });
 
   // Pretty-print routes as a simple list
   const unique = new Map();

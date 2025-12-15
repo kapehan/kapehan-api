@@ -29,6 +29,7 @@
     "@fastify/jwt": "^10.0.0",
     "@fastify/multipart": "^9.0.3",
     "@fastify/rate-limit": "^10.3.0",
+    "@fastify/under-pressure": "^9.0.3",
     "@supabase/supabase-js": "^2.55.0",
     "axios": "^1.13.2",
     "dayjs": "^1.11.13",
