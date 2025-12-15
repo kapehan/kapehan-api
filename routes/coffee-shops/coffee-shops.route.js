@@ -32,4 +32,13 @@ module.exports.coffeeshop = (app) => {
     },
     controller.findMenubyCoffeeShopSlug
   );
+
+    app.get(
+    "/featured-coffee-shops",
+    {
+      preHandler: authMiddleware,
+      config: { access: AccessLevels.GUEST },
+    },
+    controller.getSuggestedCoffeeShop
+  );
 };

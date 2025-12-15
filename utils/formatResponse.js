@@ -41,6 +41,7 @@ const formatCoffeeShop = (shop) => {
     imageUrl: shop.image_url || shop.imageUrl,
     // ✅ Add formatted payment methods here
 
+
     vibes: (shop.coffee_shop_vibes || shop.vibes || [])
       .map((v) => v?.vibe?.vibe_name)
       .filter(Boolean),
@@ -93,6 +94,8 @@ const formatCoffeeShopById = (shop) => {
     facebook: shop.facebook || [],
     instagram: shop.instagram,
     review_count: shop.review_count || 0,
+    latitude: shop.latitude,
+    longitude: shop.latitude,
 
     // ✅ Add formatted payment methods here
     payment_methods: (shop.payment_methods || []).map((pm) => ({
