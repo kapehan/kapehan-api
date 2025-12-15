@@ -6,6 +6,7 @@ const { sequelize } = require("./services/db.service");
 const config = require("./configs/config");
 const multipart = require("@fastify/multipart");
 const cookie = require("@fastify/cookie");
+const underPressure = require("@fastify/under-pressure");
 
 let cachedServer = null;
 let dbInitialized = false;
@@ -27,22 +28,14 @@ async function initDatabase() {
   }
 }
 
-// Fastify server creation
-async function createServer() {
+// Build Fastify instance and register plugins/routes ONCE
+async function buildServer() {
   const fastify = Fastify({ logger: true });
 
-  // Collect registered routes
-  const registeredRoutes = [];
-  fastify.addHook("onRoute", (routeOptions) => {
-    const methods = Array.isArray(routeOptions.method)
-      ? routeOptions.method
-      : [routeOptions.method];
-    const url = routeOptions.path || routeOptions.url || ""; // Fastify may use path or url
-    methods.forEach((m) => {
-      const method = (m || "").toUpperCase();
-      if (!method || !url) return;
-      registeredRoutes.push({ method, url });
-    });
+  // Apply backpressure FIRST to shed load early
+  await fastify.register(underPressure, {
+    maxConcurrentRequests: parseInt(process.env.MAX_CONCURRENT || "50"),
+    maxEventLoopDelay: 1000,
   });
 
   // Register CORS directly (MUST BE FIRST)
@@ -68,10 +61,27 @@ async function createServer() {
   await fastify.register(cookie, { parseOptions: {} });
   await fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
-  // Tune database pool (if using Sequelize pool)
+  // Tune database pool (keep small on serverless)
   if (sequelize && sequelize.connectionManager && sequelize.connectionManager.pool) {
-    sequelize.connectionManager.pool.max = 20; // increase from default 5
-    sequelize.connectionManager.pool.min = 2;
+    const isServerless = !!process.env.VERCEL;
+    const max = parseInt(process.env.DB_POOL_MAX || (isServerless ? "2" : "5"));
+    const min = parseInt(process.env.DB_POOL_MIN || (isServerless ? "0" : "1"));
+    sequelize.connectionManager.pool.max = max;
+    sequelize.connectionManager.pool.min = min;
+
+    // Reflect into sequelize options (not strictly required but keeps config coherent)
+    sequelize.options.pool = {
+      ...(sequelize.options.pool || {}),
+      max,
+      min,
+      idle: parseInt(process.env.DB_POOL_IDLE || "10000"),
+      acquire: parseInt(process.env.DB_POOL_ACQUIRE || "20000"),
+      evict: parseInt(process.env.DB_POOL_EVICT || "1000"),
+    };
+    sequelize.options.dialectOptions = {
+      ...(sequelize.options.dialectOptions || {}),
+      keepAlive: true,
+    };
   }
 
   // Register routes under /v1
@@ -105,23 +115,15 @@ async function createServer() {
   await initDatabase();
   await fastify.ready();
 
-  // Pretty-print routes as a simple list
-  const unique = new Map();
-  for (const r of registeredRoutes) {
-    const key = `${r.method} ${r.url}`;
-    if (!unique.has(key)) unique.set(key, r);
-  }
-  const lines = Array.from(unique.values())
-    .sort((a, b) => {
-      if (a.url === b.url) return a.method.localeCompare(b.method);
-      return a.url.localeCompare(b.url);
-    })
-    .map((r) => `${r.method.padEnd(6)} ${r.url}`)
-    .join("\n");
-
-  fastify.log.info("Registered routes:\n" + lines);
-
   return fastify;
+}
+
+// Fastify server creation (returns cached or builds new)
+async function createServer() {
+  if (!cachedServer) {
+    cachedServer = await buildServer();
+  }
+  return cachedServer;
 }
 
 // Local development server
@@ -146,8 +148,8 @@ if (!process.env.VERCEL) {
 // Vercel serverless handler
 module.exports = async (req, res) => {
   try {
-    if (!cachedServer) cachedServer = await createServer();
-    cachedServer.server.emit("request", req, res);
+    const server = await createServer();
+    server.server.emit("request", req, res);
     await new Promise((resolve, reject) => {
       res.on("finish", resolve);
       res.on("error", reject);
