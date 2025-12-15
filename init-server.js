@@ -6,7 +6,7 @@ const { sequelize } = require("./services/db.service");
 const config = require("./configs/config");
 const multipart = require("@fastify/multipart");
 const cookie = require("@fastify/cookie");
-const underPressure = require("@fastify/under-pressure"); // added
+const underPressure = require("@fastify/under-pressure");
 
 let cachedServer = null;
 let dbInitialized = false;
@@ -28,8 +28,8 @@ async function initDatabase() {
   }
 }
 
-// Fastify server creation
-async function createServer() {
+// Build Fastify instance and register plugins/routes ONCE
+async function buildServer() {
   const fastify = Fastify({ logger: true });
 
   // Apply backpressure FIRST to shed load early
@@ -157,6 +157,14 @@ async function createServer() {
   return fastify;
 }
 
+// Fastify server creation (returns cached or builds new)
+async function createServer() {
+  if (!cachedServer) {
+    cachedServer = await buildServer();
+  }
+  return cachedServer;
+}
+
 // Local development server
 if (!process.env.VERCEL) {
   (async () => {
@@ -179,8 +187,8 @@ if (!process.env.VERCEL) {
 // Vercel serverless handler
 module.exports = async (req, res) => {
   try {
-    if (!cachedServer) cachedServer = await createServer();
-    cachedServer.server.emit("request", req, res);
+    const server = await createServer();
+    server.server.emit("request", req, res);
     await new Promise((resolve, reject) => {
       res.on("finish", resolve);
       res.on("error", reject);
