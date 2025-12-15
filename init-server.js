@@ -7,11 +7,12 @@ const cookie = require("@fastify/cookie");
 let cachedServer = null;
 let dbInitialized = false;
 
-// Detect serverless (Vercel or NODE_ENV=production)
-const isServerless = !!process.env.VERCEL || process.env.NODE_ENV === "production";
+// Detect production vs serverless (Vercel)
+const isProd = process.env.NODE_ENV === "production";
+const isServerless = !!process.env.VERCEL || process.env.KAPEHAN_SERVERLESS === "1";
 
 console.log(
-  `[Kapehan] Server mode: ${isServerless ? "PRODUCTION/SERVERLESS" : "DEVELOPMENT"}`
+  `[Kapehan] Mode: ${isProd ? "PRODUCTION" : "DEVELOPMENT"} | Platform: ${isServerless ? "SERVERLESS (Vercel)" : "NODE"}`
 );
 
 // Database initialization
@@ -20,8 +21,8 @@ async function initDatabase() {
   try {
     await sequelize.authenticate();
     console.log("✅ Connected to Supabase");
-    // Only sync in dev, never in production/serverless
-    if (!isServerless) {
+    // Only sync in non-production (never in production)
+    if (!isProd) {
       await sequelize.sync();
       console.log("✅ Tables synced (dev only)");
     }
@@ -126,7 +127,7 @@ async function createServer() {
   return cachedServer;
 }
 
-// Local development server
+// Local development server (start whenever not serverless, regardless of NODE_ENV)
 if (!isServerless) {
   (async () => {
     try {
