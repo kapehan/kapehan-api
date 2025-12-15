@@ -35,7 +35,6 @@ const create = async (req, reply) => {
 };
 
 const findAll = async (req) => {
-  console.log("req", req.params);
   return await coffeeshop.findAll(req.query);
 };
 
@@ -49,4 +48,14 @@ const findMenubyCoffeeShopSlug = async (req) => {
   return await coffeeshop.findMenubyCoffeeShopSlug({ slug });
 };
 
-module.exports = { create, findAll, findBySlug, findMenubyCoffeeShopSlug };
+const getSuggestedCoffeeShop = async (req) => {
+  return await coffeeshop.getSuggestedCoffeeShops(req.query);
+};
+
+module.exports = {
+  create,
+  findAll,
+  findBySlug,
+  findMenubyCoffeeShopSlug,
+  getSuggestedCoffeeShop,
+};
