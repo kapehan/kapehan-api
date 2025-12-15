@@ -96,10 +96,15 @@ async function buildServer() {
 
   // Error handler
   fastify.setErrorHandler((error, req, reply) => {
-    if (!isServerless) fastify.log.error(error);
+    // Always log error stack for debugging
+    console.error("❌ Fastify error:", error && error.stack ? error.stack : error);
+    if (!isServerless && fastify.log && fastify.log.error) fastify.log.error(error);
     reply
       .code(error.statusCode || 500)
-      .send({ error: error.message || "Internal Server Error" });
+      .send({
+        error: error.message || "Internal Server Error",
+        stack: error.stack, // expose stack for debugging (remove in prod if needed)
+      });
   });
 
   await initDatabase();
@@ -146,11 +151,15 @@ module.exports = async (req, res) => {
       res.on("error", reject);
     });
   } catch (err) {
-    if (!isServerless) console.error("❌ Serverless handler error:", err);
+    // Always log error stack for debugging
+    console.error("❌ Serverless handler error:", err && err.stack ? err.stack : err);
     if (!res.writableEnded) {
       res.statusCode = 500;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: "Internal Server Error" }));
+      res.end(JSON.stringify({
+        error: err && err.message ? err.message : "Internal Server Error",
+        stack: err && err.stack ? err.stack : undefined,
+      }));
     }
   }
 };
