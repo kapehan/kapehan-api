@@ -10,6 +10,10 @@ let dbInitialized = false;
 // Detect serverless (Vercel or NODE_ENV=production)
 const isServerless = !!process.env.VERCEL || process.env.NODE_ENV === "production";
 
+console.log(
+  `[Kapehan] Server mode: ${isServerless ? "PRODUCTION/SERVERLESS" : "DEVELOPMENT"}`
+);
+
 // Database initialization
 async function initDatabase() {
   if (dbInitialized) return;
