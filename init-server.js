@@ -1,15 +1,18 @@
 const Fastify = require("fastify");
 const cors = require("@fastify/cors");
-const rateLimit = require("@fastify/rate-limit");
-const compress = require("@fastify/compress");
 const { sequelize } = require("./services/db.service");
-const config = require("./configs/config");
 const multipart = require("@fastify/multipart");
 const cookie = require("@fastify/cookie");
-const underPressure = require("@fastify/under-pressure");
 
 let cachedServer = null;
 let dbInitialized = false;
+
+// Detect serverless (Vercel or NODE_ENV=production)
+const isServerless = !!process.env.VERCEL || process.env.NODE_ENV === "production";
+
+console.log(
+  `[Kapehan] Server mode: ${isServerless ? "PRODUCTION/SERVERLESS" : "DEVELOPMENT"}`
+);
 
 // Database initialization
 async function initDatabase() {
@@ -17,7 +20,8 @@ async function initDatabase() {
   try {
     await sequelize.authenticate();
     console.log("✅ Connected to Supabase");
-    if (process.env.NODE_ENV !== "production") {
+    // Only sync in dev, never in production/serverless
+    if (!isServerless) {
       await sequelize.sync();
       console.log("✅ Tables synced (dev only)");
     }
@@ -30,15 +34,9 @@ async function initDatabase() {
 
 // Build Fastify instance and register plugins/routes ONCE
 async function buildServer() {
-  const fastify = Fastify({ logger: true });
+  const fastify = Fastify({ logger: !isServerless });
 
-  // Apply backpressure FIRST to shed load early
-  await fastify.register(underPressure, {
-    maxConcurrentRequests: parseInt(process.env.MAX_CONCURRENT || "50"),
-    maxEventLoopDelay: 1000,
-  });
-
-  // Register CORS directly (MUST BE FIRST)
+  // Only register essential plugins for serverless
   await fastify.register(cors, {
     origin: [
       "http://localhost:3000",
@@ -53,30 +51,22 @@ async function buildServer() {
     allowedHeaders: ["Content-Type", "Authorization"],
   });
 
-  // Add compression early
-  await fastify.register(compress, { threshold: 1024 });
-
-  // Register other plugins
   await fastify.register(multipart, { attachFieldsToBody: true });
   await fastify.register(cookie, { parseOptions: {} });
-  await fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
-  // Tune database pool (keep small on serverless)
+  // Tune database pool (keep minimal on serverless)
   if (sequelize && sequelize.connectionManager && sequelize.connectionManager.pool) {
-    const isServerless = !!process.env.VERCEL;
-    const max = parseInt(process.env.DB_POOL_MAX || (isServerless ? "2" : "5"));
-    const min = parseInt(process.env.DB_POOL_MIN || (isServerless ? "0" : "1"));
+    const max = isServerless ? 1 : 5;
+    const min = isServerless ? 0 : 1;
     sequelize.connectionManager.pool.max = max;
     sequelize.connectionManager.pool.min = min;
-
-    // Reflect into sequelize options (not strictly required but keeps config coherent)
     sequelize.options.pool = {
       ...(sequelize.options.pool || {}),
       max,
       min,
-      idle: parseInt(process.env.DB_POOL_IDLE || "10000"),
-      acquire: parseInt(process.env.DB_POOL_ACQUIRE || "20000"),
-      evict: parseInt(process.env.DB_POOL_EVICT || "1000"),
+      idle: 10000,
+      acquire: 20000,
+      evict: 1000,
     };
     sequelize.options.dialectOptions = {
       ...(sequelize.options.dialectOptions || {}),
@@ -106,14 +96,15 @@ async function buildServer() {
 
   // Error handler
   fastify.setErrorHandler((error, req, reply) => {
-    fastify.log.error(error);
+    if (!isServerless) fastify.log.error(error);
     reply
       .code(error.statusCode || 500)
       .send({ error: error.message || "Internal Server Error" });
   });
 
   await initDatabase();
-  await fastify.ready();
+  // Don't await fastify.ready() in serverless, only in dev
+  if (!isServerless) await fastify.ready();
 
   return fastify;
 }
@@ -127,7 +118,7 @@ async function createServer() {
 }
 
 // Local development server
-if (!process.env.VERCEL) {
+if (!isServerless) {
   (async () => {
     try {
       const server = await createServer();
@@ -155,7 +146,7 @@ module.exports = async (req, res) => {
       res.on("error", reject);
     });
   } catch (err) {
-    console.error("❌ Serverless handler error:", err);
+    if (!isServerless) console.error("❌ Serverless handler error:", err);
     if (!res.writableEnded) {
       res.statusCode = 500;
       res.setHeader("Content-Type", "application/json");
