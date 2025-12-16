@@ -101,14 +101,21 @@ const remove = async (reviewId, auth = null) => {
     const where = { id: reviewId, is_active: "Y" };
     if (userId) where.user_id = userId;
 
-    const [affected, rows] = await coffee_shop_reviews.update(
+    // Perform soft delete without RETURNING to avoid selecting non-existent columns
+    const [affected] = await coffee_shop_reviews.update(
       { is_active: "N" },
-      { where, returning: true }
+      { where, returning: false }
     );
 
-    if (!affected || !rows?.length) return sendError("Review not found", 404);
+    if (!affected) return sendError("Review not found", 404);
 
-    return sendSuccess(rows[0].toJSON(), "Review deleted successfully");
+    // Fetch the updated record with minimal, known-safe attributes
+    const updated = await coffee_shop_reviews.findOne({
+      where: { id: reviewId },
+      attributes: ["id", "coffee_shop_slug", "user_id", "is_active", "created_at", "updated_at"],
+    });
+
+    return sendSuccess(updated?.toJSON() ?? { id: reviewId, is_active: "N" }, "Review deleted successfully");
   } catch (error) {
     return sendError(`Failed to remove review: ${error.message}`);
   }

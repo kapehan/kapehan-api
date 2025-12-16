@@ -19,6 +19,7 @@ module.exports = (sequelize) => {
       username: { type: DataTypes.STRING, allowNull: false, unique: true },
       gender: {type: DataTypes.STRING},
       created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+      review_count: { type: DataTypes.BIGINT, allowNull: true },
     },
     {
       tableName: "users",
