@@ -278,7 +278,6 @@ const create = async (body) => {
   }
 };
 
-
 const findAll = async (query, reply) => {
   try {
     const normalizedQuery = Object.fromEntries(
@@ -287,24 +286,35 @@ const findAll = async (query, reply) => {
         typeof value === "string" ? value.toLowerCase() : value,
       ])
     );
-    console.log(normalizedQuery.vibes)
+    console.log(normalizedQuery.vibes);
     // Normalize list-like query params (single string, CSV string, array, or scalar)
     const toArray = (val) => {
       if (val == null) return null;
-      if (Array.isArray(val)) return val.map((s) => String(s).trim()).filter(Boolean);
-      if (typeof val === "string") return val.split(",").map((s) => s.trim()).filter(Boolean);
+      if (Array.isArray(val))
+        return val.map((s) => String(s).trim()).filter(Boolean);
+      if (typeof val === "string")
+        return val
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
       return [String(val)].filter(Boolean);
     };
 
     // vibes is singular (string) — normalize like city
     const rawVibe =
-      typeof normalizedQuery.vibes === "string" && normalizedQuery.vibes.trim() !== ""
+      typeof normalizedQuery.vibes === "string" &&
+      normalizedQuery.vibes.trim() !== ""
         ? normalizedQuery.vibes.trim()
-        : (typeof normalizedQuery.vibe === "string" && normalizedQuery.vibe.trim() !== ""
-            ? normalizedQuery.vibe.trim()
-            : null);
-    const vibeNormalizedUnderscore = rawVibe ? rawVibe.toLowerCase().replace(/\s+/g, "_") : null;
-    const vibeNormalizedSpace = rawVibe ? rawVibe.toLowerCase().replace(/_/g, " ") : null;
+        : typeof normalizedQuery.vibe === "string" &&
+          normalizedQuery.vibe.trim() !== ""
+        ? normalizedQuery.vibe.trim()
+        : null;
+    const vibeNormalizedUnderscore = rawVibe
+      ? rawVibe.toLowerCase().replace(/\s+/g, "_")
+      : null;
+    const vibeNormalizedSpace = rawVibe
+      ? rawVibe.toLowerCase().replace(/_/g, " ")
+      : null;
 
     const where = {};
     if (normalizedQuery.search) {
@@ -328,18 +338,31 @@ const findAll = async (query, reply) => {
     const sortByDistance = isFinite(lat) && isFinite(lng);
 
     // Build filters for junction tables (amenities can be CSV/array)
-    const amenityFilter = toArray(normalizedQuery.amenities ?? normalizedQuery.amenity);
+    const amenityFilter = toArray(
+      normalizedQuery.amenities ?? normalizedQuery.amenity
+    );
     // const vibeFilter = toArray(normalizedQuery.vibes ?? normalizedQuery.vibe); // removed (vibes is singular)
 
     // Include selection (lighter by default; opt-in via include=...)
-    const includeParam = typeof query.include === "string" ? query.include.toLowerCase() : "";
-    const includeSet = new Set(includeParam.split(",").map((s) => s.trim()).filter(Boolean));
+    const includeParam =
+      typeof query.include === "string" ? query.include.toLowerCase() : "";
+    const includeSet = new Set(
+      includeParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    );
     const includeAll = includeSet.has("all");
 
     const include = [];
 
     // City info
-    if (includeAll || normalizedQuery.city || includeSet.has("city") || includeSet.has("city_info")) {
+    if (
+      includeAll ||
+      normalizedQuery.city ||
+      includeSet.has("city") ||
+      includeSet.has("city_info")
+    ) {
       include.push({
         model: cities,
         as: "city_info",
@@ -353,18 +376,25 @@ const findAll = async (query, reply) => {
       model: coffee_shop_amenities,
       as: "amenities",
       required: false,
-      where: amenityFilter && amenityFilter.length ? { amenity_value: { [Op.in]: amenityFilter } } : undefined,
+      where:
+        amenityFilter && amenityFilter.length
+          ? { amenity_value: { [Op.in]: amenityFilter } }
+          : undefined,
       attributes: ["amenity_value"],
       include: [
-        { model: amenities, as: "amenity", attributes: ["amenity_name", "amenity_value"] },
+        {
+          model: amenities,
+          as: "amenity",
+          attributes: ["amenity_name", "amenity_value"],
+        },
       ],
     });
 
-    // Vibes: always include; apply where only if a single vibe filter is provided
+    // Vibes: include always; when filtering by vibe, require the join so only shops with matching vibe are returned
     include.push({
       model: coffee_shop_vibes,
       as: "vibes",
-      required: false,
+      required: !!rawVibe, // was false; make it required when a filter exists
       where: rawVibe
         ? {
             [Op.or]: [
@@ -390,7 +420,11 @@ const findAll = async (query, reply) => {
     }
 
     // Payment methods: opt-in
-    if (includeAll || includeSet.has("payment_methods") || includeSet.has("payment")) {
+    if (
+      includeAll ||
+      includeSet.has("payment_methods") ||
+      includeSet.has("payment")
+    ) {
       include.push({
         model: payment_method,
         as: "payment_methods",
@@ -399,9 +433,10 @@ const findAll = async (query, reply) => {
       });
     }
 
-    // Ensure we have today's opening_hours for ordering open shops first
-    const today = dayjs().format("dddd").toLowerCase();
-    const nowTime = dayjs().format("HH:mm:ss");
+    // Ensure we have today's opening_hours for ordering open shops first (Asia/Manila)
+    const now = dayjs().tz("Asia/Manila");
+    const todayLower = now.format("dddd").toLowerCase();
+    const nowTime = now.format("HH:mm:ss");
 
     // Attach today's opening_hours to include (merge if already present)
     let ohInc = include.find((i) => i.as === "opening_hours");
@@ -411,12 +446,21 @@ const findAll = async (query, reply) => {
         as: "opening_hours",
         required: false,
         attributes: ["day_of_week", "open_time", "close_time", "is_closed"],
-        where: { day_of_week: today },
+        // case-insensitive equality
+        where: { day_of_week: { [Op.iLike]: now.format("dddd") } },
       });
     } else {
       ohInc.required = false;
-      ohInc.attributes = ["day_of_week", "open_time", "close_time", "is_closed"];
-      ohInc.where = { ...(ohInc.where || {}), day_of_week: today };
+      ohInc.attributes = [
+        "day_of_week",
+        "open_time",
+        "close_time",
+        "is_closed",
+      ];
+      ohInc.where = {
+        ...(ohInc.where || {}),
+        day_of_week: { [Op.iLike]: now.format("dddd") },
+      };
     }
 
     // Pagination params
@@ -426,7 +470,7 @@ const findAll = async (query, reply) => {
 
     // Generate cache key from query params
     const cacheKey = JSON.stringify(query);
-    
+
     // Check cache first (skip for geo queries which are dynamic)
     if (!sortByDistance && isCacheValid(cacheKey)) {
       const cached = getCacheKey(cacheKey);
@@ -445,14 +489,25 @@ const findAll = async (query, reply) => {
 
     // Helper to compute openNow for a row (uses today's opening_hours)
     const isOpenNow = (row) => {
-      const hours = (row.opening_hours || []).filter(h => (h.day_of_week || "").toLowerCase() === today);
+      const hours = (row.opening_hours || []).filter(
+        (h) => (h.day_of_week || "").toLowerCase() === todayLower
+      );
       if (!hours.length) return false;
-      return hours.some(h => !h.is_closed && String(h.open_time) <= nowTime && String(h.close_time) >= nowTime);
+      return hours.some(
+        (h) =>
+          !h.is_closed &&
+          String(h.open_time) <= nowTime &&
+          String(h.close_time) >= nowTime
+      );
     };
 
     // Branch: no lat/lng -> original paginated query, but order open-first in SQL
     if (!sortByDistance) {
-      const total = await coffee_shops.count({ where, distinct: true, include });
+      const total = await coffee_shops.count({
+        where,
+        distinct: true,
+        include,
+      });
 
       const rows = await coffee_shops.findAll({
         where,
@@ -500,10 +555,12 @@ const findAll = async (query, reply) => {
       subQuery: false,
     });
 
-    let annotated = annotateAndFilterByDistance(rows, lat, lng, radiusKm).map((a) => ({
-      ...a,
-      openNow: isOpenNow(a.row),
-    }));
+    let annotated = annotateAndFilterByDistance(rows, lat, lng, radiusKm).map(
+      (a) => ({
+        ...a,
+        openNow: isOpenNow(a.row),
+      })
+    );
 
     // Open-first, then distance asc
     annotated.sort((a, b) => {
@@ -520,15 +577,23 @@ const findAll = async (query, reply) => {
       f.distanceKm = distanceKm;
       return f;
     });
-    const pageInfo = { total, page, limit, totalPages: Math.ceil(total / limit) };
+    const pageInfo = {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
 
-    return sendSuccess(formattedRows, "Coffee shops fetched successfully", pageInfo);
+    return sendSuccess(
+      formattedRows,
+      "Coffee shops fetched successfully",
+      pageInfo
+    );
   } catch (error) {
     console.error("❌ Error fetching coffee shops:", error);
     return sendError(`Failed to fetch coffee shops: ${error.message}`);
   }
 };
-
 
 const findBySlug = async (params, reply) => {
   try {
@@ -592,8 +657,11 @@ const findBySlug = async (params, reply) => {
     }
 
     const formattedShop = formatCoffeeShopById(shop);
-    const response = sendSuccess(formattedShop, "Coffee shop fetched successfully");
-    
+    const response = sendSuccess(
+      formattedShop,
+      "Coffee shop fetched successfully"
+    );
+
     // Cache response
     setCacheKey(cacheKey, response);
     return response;
@@ -652,10 +720,7 @@ const findMenubyCoffeeShopSlug = async (params, reply) => {
       return acc;
     }, {});
 
-    return sendSuccess(
-      { menu: menuByCategory },
-      "Menu fetched successfully"
-    );
+    return sendSuccess({ menu: menuByCategory }, "Menu fetched successfully");
   } catch (error) {
     console.error("❌ Error fetching menu:", error);
     return sendError(`Failed to fetch menu: ${error.message}`);
@@ -674,8 +739,13 @@ const getSuggestedCoffeeShops = async (query, reply) => {
     // Prepare city filter: accept either city_value ("quezon_city") or city_name ("quezon city")
     let cityFilter = null;
     if (normalizedQuery.city) {
-      const normalizedCityValue = String(normalizedQuery.city).toLowerCase().trim().replace(/\s+/g, "_");
-      const normalizedCityName = String(normalizedQuery.city).toLowerCase().trim();
+      const normalizedCityValue = String(normalizedQuery.city)
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, "_");
+      const normalizedCityName = String(normalizedQuery.city)
+        .toLowerCase()
+        .trim();
       cityFilter = { value: normalizedCityValue, name: normalizedCityName };
     }
 
@@ -689,8 +759,14 @@ const getSuggestedCoffeeShops = async (query, reply) => {
     }
 
     // Build include, add city_info when filtering by city or requested
-    const includeParam = typeof query.include === "string" ? query.include.toLowerCase() : "";
-    const includeSet = new Set(includeParam.split(",").map((s) => s.trim()).filter(Boolean));
+    const includeParam =
+      typeof query.include === "string" ? query.include.toLowerCase() : "";
+    const includeSet = new Set(
+      includeParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    );
     const include = [];
     if (cityFilter || includeSet.has("city") || includeSet.has("city_info")) {
       include.push({
@@ -704,13 +780,18 @@ const getSuggestedCoffeeShops = async (query, reply) => {
     // Fetch candidate pool ordered by rating
     const poolLimit = parseInt(query.poolLimit) || 50;
     const limitRaw = parseInt(query.limit);
-    const suggestionsCount = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 50)) : 3;
+    const suggestionsCount = Number.isFinite(limitRaw)
+      ? Math.max(1, Math.min(limitRaw, 50))
+      : 3;
 
     // 1) Get city-filtered candidates first
     const cityCandidates = await coffee_shops.findAll({
       where,
       include,
-      order: [["rating", "DESC"], ["name", "ASC"]],
+      order: [
+        ["rating", "DESC"],
+        ["name", "ASC"],
+      ],
       limit: poolLimit,
       subQuery: false,
       raw: false,
@@ -718,13 +799,16 @@ const getSuggestedCoffeeShops = async (query, reply) => {
 
     // 2) If fewer than requested AND a city filter was applied, fetch a global fallback pool
     let globalCandidates = [];
-    if ((cityCandidates.length < suggestionsCount) && !!cityFilter) {
+    if (cityCandidates.length < suggestionsCount && !!cityFilter) {
       const globalWhere = { ...where };
       delete globalWhere.city; // remove city constraint
       globalCandidates = await coffee_shops.findAll({
         where: globalWhere,
         include, // keep same include (optional)
-        order: [["rating", "DESC"], ["name", "ASC"]],
+        order: [
+          ["rating", "DESC"],
+          ["name", "ASC"],
+        ],
         limit: poolLimit,
         subQuery: false,
         raw: false,
@@ -734,7 +818,8 @@ const getSuggestedCoffeeShops = async (query, reply) => {
     // Combine pools while avoiding duplicates
     const combinedMap = new Map();
     for (const r of cityCandidates) combinedMap.set(r.id, r);
-    for (const r of globalCandidates) if (!combinedMap.has(r.id)) combinedMap.set(r.id, r);
+    for (const r of globalCandidates)
+      if (!combinedMap.has(r.id)) combinedMap.set(r.id, r);
     const candidates = Array.from(combinedMap.values());
 
     if (!candidates.length) {
@@ -742,7 +827,10 @@ const getSuggestedCoffeeShops = async (query, reply) => {
     }
 
     // Rating-weighted random sample of 'suggestionsCount'
-    const items = candidates.map((row) => ({ row, rating: Number(row.rating) || 0 }));
+    const items = candidates.map((row) => ({
+      row,
+      rating: Number(row.rating) || 0,
+    }));
     const epsilon = 0.1;
     const pickWeighted = (arr, k) => {
       const picked = [];
@@ -752,7 +840,7 @@ const getSuggestedCoffeeShops = async (query, reply) => {
         let r = Math.random() * total;
         let idx = 0;
         for (; idx < pool.length; idx++) {
-          r -= (pool[idx].rating + epsilon);
+          r -= pool[idx].rating + epsilon;
           if (r <= 0) break;
         }
         const chosen = pool.splice(Math.min(idx, pool.length - 1), 1)[0];
@@ -765,9 +853,13 @@ const getSuggestedCoffeeShops = async (query, reply) => {
 
     // If fewer than requested due to small pool, fill randomly from remaining
     if (suggested.length < suggestionsCount) {
-      const remaining = items.filter(it => !suggested.some(p => p.row.id === it.row.id));
+      const remaining = items.filter(
+        (it) => !suggested.some((p) => p.row.id === it.row.id)
+      );
       while (suggested.length < suggestionsCount && remaining.length) {
-        suggested.push(remaining.splice(Math.floor(Math.random() * remaining.length), 1)[0]);
+        suggested.push(
+          remaining.splice(Math.floor(Math.random() * remaining.length), 1)[0]
+        );
       }
     }
 
@@ -775,9 +867,16 @@ const getSuggestedCoffeeShops = async (query, reply) => {
     return sendSuccess(formatted, "Suggested coffee shops");
   } catch (error) {
     console.error("❌ Error fetching suggested coffee shops:", error);
-    return sendError(`Failed to fetch suggested coffee shops: ${error.message}`);
+    return sendError(
+      `Failed to fetch suggested coffee shops: ${error.message}`
+    );
   }
 };
 
-
-module.exports = { create, findAll, findBySlug, findMenubyCoffeeShopSlug, getSuggestedCoffeeShops };
+module.exports = {
+  create,
+  findAll,
+  findBySlug,
+  findMenubyCoffeeShopSlug,
+  getSuggestedCoffeeShops,
+};
