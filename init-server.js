@@ -46,7 +46,7 @@ async function buildServer() {
       "http://127.0.0.1:3000",
       "https://kapehan.ph",
       "localhost:3000",
-      "https://v1.kapehan.ph"
+      "https://v1.kapehan.ph",
       "https://www.kapehan.ph",
     ],
     credentials: true,
