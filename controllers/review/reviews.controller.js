@@ -59,10 +59,16 @@ const remove = async (req) => {
   return await CoffeeShopReviews.remove(reviewId, req.user);
 };
 
+const getReviewsByUserId = async (req) => {
+  const userId = req?.user?.id || null;
+  return await CoffeeShopReviews.getReviewsByUserId(userId);
+};
+
 module.exports = {
   create,
   findAll,
   findById,
   update,
   remove,
+  getReviewsByUserId
 };

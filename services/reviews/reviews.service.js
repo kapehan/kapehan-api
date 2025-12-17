@@ -121,9 +121,52 @@ const remove = async (reviewId, auth = null) => {
   }
 };
 
+const getReviewsByUserId = async (user_id) => {
+  try {
+    if (!user_id)
+      return sendError("user_id is required", 400);
+
+    const { rows, count } = await coffee_shop_reviews.findAndCountAll({
+      where: { user_id },
+      order: [["created_at", "DESC"]],
+      attributes: ["ratings"], // fetch rating from coffee_shop_reviews
+      include: [
+        {
+          model: coffee_shops,
+          as: "coffee_shop",
+          attributes: ["id", "name", "address", "image_url", "slug", "city"],
+        },
+      ],
+    });
+
+    // Only return coffee shop id, name, address, image_url, slug, city, and rating
+    const results = rows.map((r) => {
+      const json = r.toJSON();
+      if (json.coffee_shop) {
+        return {
+          id: json.coffee_shop.id,
+          coffee_shop_name: json.coffee_shop.name,
+          address: json.coffee_shop.address,
+          image: json.coffee_shop.image_url,
+          slug: json.coffee_shop.slug,
+          city: json.coffee_shop.city,
+          rating: json.ratings,
+        };
+      }
+      return {};
+    });
+
+    return sendSuccess(results, "Reviews fetched successfully");
+  } catch (error) {
+    return sendError(`Failed to fetch reviews: ${error.message}`);
+  }
+};
+
+
 module.exports = {
   create,
   findById,
   update,
   remove,
+  getReviewsByUserId
 };
