@@ -30,15 +30,21 @@ const getCityShopCounts = async () => {
     const cityValues = counts.map((c) => c.city).filter(Boolean);
     const labels = await cities.findAll({
       where: cityValues.length ? { city_value: cityValues } : undefined,
-      attributes: ["city_name", "city_value"],
+      attributes: ["city_name", "city_value", "image"],
       raw: true,
     });
 
-    const labelMap = new Map(labels.map((l) => [l.city_value, l.city_name]));
-    const result = counts.map((c) => ({
-      city_name: labelMap.get(c.city) || c.city,
-      count: Number(c.count) || 0,
-    }));
+
+    // Map city_value to label object for easy lookup
+    const labelMap = new Map(labels.map((l) => [l.city_value, l]));
+    const result = counts.map((c) => {
+      const label = labelMap.get(c.city);
+      return {
+        city_name: label ? label.city_name : c.city,
+        image: label ? label.image : null,
+        count: Number(c.count) || 0,
+      };
+    });
 
     return sendSuccess(result, "City shop counts fetched successfully");
   } catch (error) {

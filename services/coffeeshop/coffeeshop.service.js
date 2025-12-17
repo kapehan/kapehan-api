@@ -787,6 +787,34 @@ const getSuggestedCoffeeShops = async (query, reply) => {
       });
     }
 
+    // Always include amenities and vibes (like findAll)
+    include.push({
+      model: coffee_shop_amenities,
+      as: "amenities",
+      required: false,
+      attributes: ["amenity_value"],
+      include: [
+        {
+          model: amenities,
+          as: "amenity",
+          attributes: ["amenity_name", "amenity_value"],
+        },
+      ],
+    });
+    include.push({
+      model: coffee_shop_vibes,
+      as: "vibes",
+      required: false,
+      attributes: ["vibe_value"],
+      include: [
+        {
+          model: vibes,
+          as: "vibe",
+          attributes: ["vibe_name", "vibe_value"],
+        },
+      ],
+    });
+
     // Fetch candidate pool ordered by rating
     const poolLimit = parseInt(query.poolLimit) || 50;
     const limitRaw = parseInt(query.limit);

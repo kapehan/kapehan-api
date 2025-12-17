@@ -13,6 +13,15 @@ async function reviewsRoutes(app) {
     controller.create
   );
 
+    app.get(
+    "/user/reviews",
+    {
+      preHandler: authMiddleware,
+      config: { access: AccessLevels.USER },
+    },
+    controller.getReviewsByUserId
+  );
+
   app.get(
     "/reviews/:id",
     {

@@ -497,6 +497,49 @@ module.exports = (sequelize) => {
     }
   );
 
+    const CoffeeShopReport = sequelize.define(
+    "coffee_shop_reports",
+    {
+      id: {
+        type: DataTypes.BIGINT,
+        autoIncrement: true,
+        primaryKey: true,
+        allowNull: false,
+      },
+      created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+      },
+      coffee_shop_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: { tableName: "coffee_shops", schema: "kapehan" },
+          key: "id",
+        },
+      },
+      report_type: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      description: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      status: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        defaultValue: "Y",
+      },
+    },
+    {
+      tableName: "coffee_shop_reports",
+      schema: "kapehan",
+      timestamps: false,
+    }
+  );
+
   // --------------------
   // Associations
   // --------------------
@@ -651,6 +694,7 @@ module.exports = (sequelize) => {
     MenuItemPrice,
     CoffeeShopReview,
     UserLocationLog,
-    RecentUserLocationSearch 
+    RecentUserLocationSearch,
+    CoffeeShopReport
   };
 };
