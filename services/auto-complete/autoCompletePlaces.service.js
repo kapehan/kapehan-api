@@ -3,8 +3,8 @@ const { sendSuccess, sendError } = require("../../utils/response");
 const { recent_user_location_search } = require("../db.service");
 const { Op } = require("sequelize");
 
-const GEOAPIFY_API_KEY = "f3b9446253b5486a9d20f517ad0549b3";
-const GEOAPIFY_URL = "https://api.geoapify.com/v1/geocode/autocomplete";
+const GEOAPIFY_API_KEY = process.env.GEOAPIFY_API_KEY;
+const GEOAPIFY_URL = process.env.GEOAPIFY_URL;
 
 const findAll = async (query, reply) => {
   try {
