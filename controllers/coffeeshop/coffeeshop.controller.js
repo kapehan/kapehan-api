@@ -4,6 +4,7 @@ const {
   uploadPublicImage,
 } = require("../../services/file/file.public.service");
 
+
 const create = async (req, reply) => {
   try {
     const file = req.body.file;
@@ -52,10 +53,14 @@ const getSuggestedCoffeeShop = async (req) => {
   return await coffeeshop.getSuggestedCoffeeShops(req.query);
 };
 
+
+
+
 module.exports = {
   create,
   findAll,
   findBySlug,
   findMenubyCoffeeShopSlug,
   getSuggestedCoffeeShop,
+  
 };

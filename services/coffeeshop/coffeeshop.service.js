@@ -341,7 +341,6 @@ const findAll = async (query, reply) => {
     const amenityFilter = toArray(
       normalizedQuery.amenities ?? normalizedQuery.amenity
     );
-    // const vibeFilter = toArray(normalizedQuery.vibes ?? normalizedQuery.vibe); // removed (vibes is singular)
 
     // Include selection (lighter by default; opt-in via include=...)
     const includeParam =
@@ -375,7 +374,7 @@ const findAll = async (query, reply) => {
     include.push({
       model: coffee_shop_amenities,
       as: "amenities",
-      required: false,
+      required: !!(amenityFilter && amenityFilter.length), // <-- key change: required true if filtering
       where:
         amenityFilter && amenityFilter.length
           ? { amenity_value: { [Op.in]: amenityFilter } }
@@ -503,11 +502,15 @@ const findAll = async (query, reply) => {
 
     // Branch: no lat/lng -> original paginated query, but order open-first in SQL
     if (!sortByDistance) {
-      const total = await coffee_shops.count({
-        where,
-        distinct: true,
-        include,
-      });
+      // If filtering by amenities, group by coffee_shop id and require all amenities
+      let group = undefined;
+      let having = undefined;
+      if (amenityFilter && amenityFilter.length) {
+        group = ['coffee_shops.id'];
+        having = sequelize.literal(
+          `COUNT(DISTINCT("amenities"."amenity_value")) = ${amenityFilter.length}`
+        );
+      }
 
       const rows = await coffee_shops.findAll({
         where,
@@ -527,14 +530,21 @@ const findAll = async (query, reply) => {
           ["rating", "DESC"],
           ["name", "ASC"],
         ],
+        group,
+        having,
       });
 
-      const formattedRows = rows.map(formatCoffeeShop);
+      // If grouped, flatten result
+      const resultRows = Array.isArray(rows) && rows[0] && rows[0].dataValues
+        ? rows.map(r => r)
+        : rows;
+
+      const formattedRows = resultRows.map(formatCoffeeShop);
       const pageInfo = {
-        total,
+        total: formattedRows.length,
         page,
         limit,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(formattedRows.length / limit),
       };
 
       const response = sendSuccess(
