@@ -17,6 +17,12 @@ const { users } = db;
 async function registerUser(email, password, city, username, name, gender) {
   console.log(name);
   try {
+    // Check for duplicate username
+    const existingUser = await users.findOne({ where: { username } });
+    if (existingUser) {
+      throw new Error("Username already exists. Please choose another one.");
+    }
+
     const { data: signUpData, error: signUpError } = await supabaseAnon.auth.signUp({
       email,
       password,
