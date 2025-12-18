@@ -26,6 +26,7 @@ const {
   boundingBox,
   annotateAndFilterByDistance,
 } = require("../../utils/geo");
+const { isOpenFromRow } = require("../../utils/openingHours");
 
 // Simple in-memory cache (consider Redis for production)
 const queryCache = new Map();
@@ -506,7 +507,7 @@ const findAll = async (query, reply) => {
       let group = undefined;
       let having = undefined;
       if (amenityFilter && amenityFilter.length) {
-        group = ['coffee_shops.id'];
+        group = ["coffee_shops.id"];
         having = sequelize.literal(
           `COUNT(DISTINCT("amenities"."amenity_value")) = ${amenityFilter.length}`
         );
@@ -535,9 +536,10 @@ const findAll = async (query, reply) => {
       });
 
       // If grouped, flatten result
-      const resultRows = Array.isArray(rows) && rows[0] && rows[0].dataValues
-        ? rows.map(r => r)
-        : rows;
+      const resultRows =
+        Array.isArray(rows) && rows[0] && rows[0].dataValues
+          ? rows.map((r) => r)
+          : rows;
 
       const formattedRows = resultRows.map(formatCoffeeShop);
       const pageInfo = {
@@ -739,6 +741,9 @@ const findMenubyCoffeeShopSlug = async (params, reply) => {
 
 const getSuggestedCoffeeShops = async (query, reply) => {
   try {
+    /* ---------------------------------------------------
+       Normalize query
+    --------------------------------------------------- */
     const normalizedQuery = Object.fromEntries(
       Object.entries(query).map(([key, value]) => [
         key.toLowerCase(),
@@ -746,17 +751,15 @@ const getSuggestedCoffeeShops = async (query, reply) => {
       ])
     );
 
-    // Prepare city filter: accept either city_value ("quezon_city") or city_name ("quezon city")
+    /* ---------------------------------------------------
+       City filter
+    --------------------------------------------------- */
     let cityFilter = null;
     if (normalizedQuery.city) {
-      const normalizedCityValue = String(normalizedQuery.city)
+      cityFilter = String(normalizedQuery.city)
         .toLowerCase()
         .trim()
         .replace(/\s+/g, "_");
-      const normalizedCityName = String(normalizedQuery.city)
-        .toLowerCase()
-        .trim();
-      cityFilter = { value: normalizedCityValue, name: normalizedCityName };
     }
 
     const where = {};
@@ -764,20 +767,21 @@ const getSuggestedCoffeeShops = async (query, reply) => {
       where.rating = { [Op.gte]: parseFloat(normalizedQuery.minrating) };
     }
     if (cityFilter) {
-      // Direct filter on coffee_shops.city (stored as value, e.g., "quezon_city")
-      where.city = cityFilter.value;
+      where.city = cityFilter;
     }
 
-    // Build include, add city_info when filtering by city or requested
+    /* ---------------------------------------------------
+       Includes
+    --------------------------------------------------- */
     const includeParam =
       typeof query.include === "string" ? query.include.toLowerCase() : "";
     const includeSet = new Set(
-      includeParam
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
+      includeParam.split(",").map((s) => s.trim()).filter(Boolean)
     );
+    const includeAll = includeSet.has("all");
+
     const include = [];
+
     if (cityFilter || includeSet.has("city") || includeSet.has("city_info")) {
       include.push({
         model: cities,
@@ -787,7 +791,6 @@ const getSuggestedCoffeeShops = async (query, reply) => {
       });
     }
 
-    // Always include amenities and vibes (like findAll)
     include.push({
       model: coffee_shop_amenities,
       as: "amenities",
@@ -801,6 +804,7 @@ const getSuggestedCoffeeShops = async (query, reply) => {
         },
       ],
     });
+
     include.push({
       model: coffee_shop_vibes,
       as: "vibes",
@@ -815,93 +819,140 @@ const getSuggestedCoffeeShops = async (query, reply) => {
       ],
     });
 
-    // Fetch candidate pool ordered by rating
+    // 🔥 Opening hours — fetch ALL days (like findBySlug)
+    include.push({
+      model: opening_hours,
+      as: "opening_hours",
+      required: false,
+      attributes: ["day_of_week", "open_time", "close_time", "is_closed"],
+    });
+
+    if (
+      includeAll ||
+      includeSet.has("payment_methods") ||
+      includeSet.has("payment")
+    ) {
+      include.push({
+        model: payment_method,
+        as: "payment_methods",
+        required: false,
+        attributes: ["type"],
+      });
+    }
+
+    /* ---------------------------------------------------
+       Fetch candidates
+    --------------------------------------------------- */
     const poolLimit = parseInt(query.poolLimit) || 50;
     const limitRaw = parseInt(query.limit);
     const suggestionsCount = Number.isFinite(limitRaw)
       ? Math.max(1, Math.min(limitRaw, 50))
       : 3;
 
-    // 1) Get city-filtered candidates first
     const cityCandidates = await coffee_shops.findAll({
       where,
       include,
-      order: [
-        ["rating", "DESC"],
-        ["name", "ASC"],
-      ],
+      order: [["rating", "DESC"], ["name", "ASC"]],
       limit: poolLimit,
       subQuery: false,
-      raw: false,
     });
 
-    // 2) If fewer than requested AND a city filter was applied, fetch a global fallback pool
     let globalCandidates = [];
-    if (cityCandidates.length < suggestionsCount && !!cityFilter) {
+    if (cityCandidates.length < suggestionsCount && cityFilter) {
       const globalWhere = { ...where };
-      delete globalWhere.city; // remove city constraint
+      delete globalWhere.city;
+
       globalCandidates = await coffee_shops.findAll({
         where: globalWhere,
-        include, // keep same include (optional)
-        order: [
-          ["rating", "DESC"],
-          ["name", "ASC"],
-        ],
+        include,
+        order: [["rating", "DESC"], ["name", "ASC"]],
         limit: poolLimit,
         subQuery: false,
-        raw: false,
       });
     }
 
-    // Combine pools while avoiding duplicates
     const combinedMap = new Map();
-    for (const r of cityCandidates) combinedMap.set(r.id, r);
-    for (const r of globalCandidates)
+    cityCandidates.forEach((r) => combinedMap.set(r.id, r));
+    globalCandidates.forEach((r) => {
       if (!combinedMap.has(r.id)) combinedMap.set(r.id, r);
-    const candidates = Array.from(combinedMap.values());
+    });
 
+    const candidates = [...combinedMap.values()];
     if (!candidates.length) {
       return sendSuccess([], "No suggested coffee shops");
     }
 
-    // Rating-weighted random sample of 'suggestionsCount'
+    /* ---------------------------------------------------
+       Rating-weighted random
+    --------------------------------------------------- */
+    const epsilon = 0.1;
     const items = candidates.map((row) => ({
       row,
       rating: Number(row.rating) || 0,
     }));
-    const epsilon = 0.1;
-    const pickWeighted = (arr, k) => {
+
+    function pickWeighted(arr, k) {
+      const pool = [...arr];
       const picked = [];
-      const pool = arr.slice();
+
       for (let i = 0; i < k && pool.length; i++) {
-        const total = pool.reduce((s, it) => s + (it.rating + epsilon), 0);
+        const total = pool.reduce(
+          (s, it) => s + it.rating + epsilon,
+          0
+        );
+
         let r = Math.random() * total;
         let idx = 0;
+
         for (; idx < pool.length; idx++) {
           r -= pool[idx].rating + epsilon;
           if (r <= 0) break;
         }
-        const chosen = pool.splice(Math.min(idx, pool.length - 1), 1)[0];
-        picked.push(chosen);
+
+        picked.push(pool.splice(Math.min(idx, pool.length - 1), 1)[0]);
       }
+
       return picked;
-    };
+    }
 
     let suggested = pickWeighted(items, suggestionsCount);
 
-    // If fewer than requested due to small pool, fill randomly from remaining
     if (suggested.length < suggestionsCount) {
       const remaining = items.filter(
-        (it) => !suggested.some((p) => p.row.id === it.row.id)
+        (it) => !suggested.some((s) => s.row.id === it.row.id)
       );
       while (suggested.length < suggestionsCount && remaining.length) {
         suggested.push(
-          remaining.splice(Math.floor(Math.random() * remaining.length), 1)[0]
+          remaining.splice(
+            Math.floor(Math.random() * remaining.length),
+            1
+          )[0]
         );
       }
     }
 
-    const formatted = suggested.map(({ row }) => formatCoffeeShop(row));
+    /* ---------------------------------------------------
+       Final formatting (USING isOpenFromRow)
+    --------------------------------------------------- */
+    const today = dayjs().tz("Asia/Manila").format("dddd").toLowerCase();
+    console.log("📅 Today (Asia/Manila):", today);
+
+    const formatted = suggested.map(({ row }) => {
+      const shop = formatCoffeeShop(row);
+
+      const todayOpeningRow =
+        row.opening_hours?.find(
+          (h) => h.day_of_week?.toLowerCase() === today
+        ) || null;
+
+      console.log("🏪 Shop:", row.name);
+      console.log("📦 Today opening row:", todayOpeningRow);
+
+      shop.isOpen = isOpenFromRow(todayOpeningRow);
+
+      return shop;
+    });
+
     return sendSuccess(formatted, "Suggested coffee shops");
   } catch (error) {
     console.error("❌ Error fetching suggested coffee shops:", error);
@@ -910,6 +961,7 @@ const getSuggestedCoffeeShops = async (query, reply) => {
     );
   }
 };
+
 
 module.exports = {
   create,
