@@ -114,7 +114,10 @@ async function getUserData(userId, accessToken) {
     if (!user) {
       throw new Error("User not found or access denied by RLS.");
     }
-    return user.toJSON();
+    const userObj = user.toJSON();
+    delete userObj.full_name;
+    delete userObj.email;
+    return userObj;
   } catch (err) {
     console.error("getUserData exception:", err);
     throw new Error(err.message || "An unknown error occurred while retrieving user data.");
@@ -168,6 +171,26 @@ async function refreshSession(refreshToken) {
   }
 }
 
+async function findUserByUsername(slug) {
+  try {
+    if (!slug) {
+      throw new Error("Username (slug) is required.");
+    }
+    const user = await users.findOne({ where: { username: slug } });
+    if (!user) {
+      return null;
+    }
+    const userObj = user.toJSON();
+    delete userObj.full_name;
+    delete userObj.email;
+    delete userObj.city;
+    return userObj;
+  } catch (err) {
+    console.error("findUserByUsername exception:", err);
+    throw new Error(err.message || "An unknown error occurred while fetching user by username.");
+  }
+}
+
 // Export CommonJS
 module.exports = {
   registerUser,
@@ -176,4 +199,5 @@ module.exports = {
   getUserData,
   updateUserData,
   refreshSession,
+  findUserByUsername
 };
