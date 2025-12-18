@@ -1,6 +1,7 @@
-import dayjs from "dayjs";
-import timezone from "dayjs/plugin/timezone.js";
-import utc from "dayjs/plugin/utc.js";
+
+const dayjs = require("dayjs");
+const timezone = require("dayjs/plugin/timezone");
+const utc = require("dayjs/plugin/utc");
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -9,7 +10,7 @@ dayjs.extend(timezone);
    Time helpers
 ----------------------------- */
 
-export function convertTo24Hour(timeStr) {
+function convertTo24Hour(timeStr) {
   if (!timeStr) return null;
 
   // Handle "HH:mm:ss" manually if present
@@ -35,7 +36,7 @@ export function convertTo24Hour(timeStr) {
   return null; // failed to parse
 }
 
-export function timeToMinutes(time24) {
+function timeToMinutes(time24) {
   if (!time24) return null;
   const [h, m] = time24.split(":").map(Number);
   return h * 60 + m;
@@ -45,7 +46,7 @@ export function timeToMinutes(time24) {
    isOpen logic (SINGLE DAY)
 ----------------------------- */
 
-export function isOpenFromRow(openingRow) {
+function isOpenFromRow(openingRow) {
   if (!openingRow) {
     console.log("❌ No opening_hours row for today");
     return false;
@@ -82,4 +83,11 @@ export function isOpenFromRow(openingRow) {
   }
 
   return currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
+
 }
+
+module.exports = {
+  convertTo24Hour,
+  timeToMinutes,
+  isOpenFromRow,
+};
