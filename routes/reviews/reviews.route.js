@@ -4,6 +4,15 @@ const { AccessLevels } = require("../../utils/accessLevels.js");
 const { sendError } = require("../../utils/response");
 
 async function reviewsRoutes(app) {
+  app.get(
+    "/shop/reviews",
+    {
+      preHandler: authMiddleware,
+      config: { access: AccessLevels.ADMIN },
+    },
+    controller.getAllReviews
+  );
+
   app.post(
     "/review/:id/create",
     {
@@ -13,7 +22,7 @@ async function reviewsRoutes(app) {
     controller.create
   );
 
-    app.get(
+  app.get(
     "/user/reviews",
     {
       preHandler: authMiddleware,
@@ -40,7 +49,7 @@ async function reviewsRoutes(app) {
     controller.remove
   );
 
-    app.post(
+  app.post(
     "/review/:slug/update", // changed param name
     {
       preHandler: authMiddleware,

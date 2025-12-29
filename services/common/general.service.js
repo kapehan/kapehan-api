@@ -1,4 +1,4 @@
-const { coffee_shops, coffee_shop_reviews, cities } = require("../db.service");
+const { coffee_shops, coffee_shop_reviews, cities, users } = require("../db.service");
 const { sendSuccess, sendError } = require("../../utils/response");
 
 

@@ -249,6 +249,57 @@ async function refreshTokenController(req, reply) {
   }
 }
 
+async function loginUserAdminController(req, reply) {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return reply
+        .code(400)
+        .send(sendError("Email and password are required fields."));
+    }
+
+    const { isSuccess, accessToken, refreshToken, userId } =
+      await userService.loginAdminUser(email, password);
+
+    if (!isSuccess) {
+      return reply.code(401).send(sendError("Login failed."));
+    }
+
+    const isProduction = process.env.NODE_ENV === "production";
+
+    // Set cookies
+    reply
+      .setCookie("sb-access-token", accessToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "Strict" : "Lax",
+        path: "/",
+        maxAge: 60 * 60, // 1 hour
+      })
+      .setCookie("sb-refresh-token", refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "Strict" : "Lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+      });
+
+    // Clear anonymous token on login
+    reply.clearCookie("sb-access-anon-token", {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "Strict",
+      path: "/",
+    });
+
+    return reply.send(sendSuccess({ id: userId }, "Login successful"));
+  } catch (error) {
+    console.error("Login controller error:", error);
+    return reply.code(500).send(sendError("Server error: " + error.message));
+  }
+}
+
 module.exports = {
   registerUserController,
   loginUserController,

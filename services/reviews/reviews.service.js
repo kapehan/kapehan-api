@@ -162,11 +162,56 @@ const getReviewsByUserId = async (user_id) => {
   }
 };
 
+const getAllReviews = async () => {
+  try {
+    const { rows, count } = await coffee_shop_reviews.findAndCountAll({
+      order: [["created_at", "DESC"]],
+      attributes: ["ratings", "remarks", "created_at"], // fetch ratings and remarks from coffee_shop_reviews
+      include: [
+        {
+          model: coffee_shops,
+          as: "coffee_shop",
+          attributes: ["id", "name", "address", "image_url", "slug", "city"],
+        },
+        {
+          model: users,
+          as: "user", // matches association alias
+          attributes: ["full_name"], // fetch only full_name from users
+        },
+      ],
+    });
+
+    // Only return coffee shop id, name, address, image_url, slug, city, rating, remarks, and user full_name
+    const results = rows.map((r) => {
+      const json = r.toJSON();
+      if (json.coffee_shop) {
+        return {
+          id: json.coffee_shop.id,
+          coffee_shop_name: json.coffee_shop.name,
+          address: json.coffee_shop.address,
+          image: json.coffee_shop.image_url,
+          slug: json.coffee_shop.slug,
+          city: json.coffee_shop.city,
+          rating: json.ratings,
+          remarks: json.remarks,
+          created_at: json.created_at,
+          user: json.user ? json.user.full_name : null,
+        };
+      }
+      return {};
+    });
+
+    return sendSuccess(results, "Reviews fetched successfully");
+  } catch (error) {
+    return sendError(`Failed to fetch reviews: ${error.message}`);
+  }
+};
 
 module.exports = {
   create,
   findById,
   update,
   remove,
-  getReviewsByUserId
+  getReviewsByUserId,
+  getAllReviews
 };
