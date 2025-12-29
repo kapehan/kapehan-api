@@ -17,7 +17,7 @@ module.exports = (sequelize) => {
       city: { type: DataTypes.STRING }, // references cities.city_value
       role: { type: DataTypes.STRING, defaultValue: "user" },
       username: { type: DataTypes.STRING, allowNull: false, unique: true },
-      gender: {type: DataTypes.STRING},
+      gender: { type: DataTypes.STRING },
       created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
       review_count: { type: DataTypes.BIGINT, allowNull: true },
     },
@@ -74,7 +74,7 @@ module.exports = (sequelize) => {
       slug: { type: DataTypes.STRING, allowNull: false },
       description: { type: DataTypes.TEXT },
       address: { type: DataTypes.TEXT },
-      review_count: {type: DataTypes.BIGINT},
+      review_count: { type: DataTypes.BIGINT },
       city: { type: DataTypes.STRING },
       email: { type: DataTypes.STRING },
       rating: { type: DataTypes.DECIMAL(3, 2), defaultValue: 5 },
@@ -91,10 +91,6 @@ module.exports = (sequelize) => {
       tableName: "coffee_shops",
       schema: "kapehan",
       timestamps: false,
-      // Only show non-pending by default
-      defaultScope: {
-        where: { status: { [Op.ne]: "pending" } },
-      },
     }
   );
 
@@ -307,6 +303,11 @@ module.exports = (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
       },
+      is_active: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+      },
+
       created_at: {
         type: DataTypes.DATE,
         allowNull: true,
@@ -497,7 +498,7 @@ module.exports = (sequelize) => {
     }
   );
 
-    const CoffeeShopReport = sequelize.define(
+  const CoffeeShopReport = sequelize.define(
     "coffee_shop_reports",
     {
       id: {
@@ -695,6 +696,6 @@ module.exports = (sequelize) => {
     CoffeeShopReview,
     UserLocationLog,
     RecentUserLocationSearch,
-    CoffeeShopReport
+    CoffeeShopReport,
   };
 };

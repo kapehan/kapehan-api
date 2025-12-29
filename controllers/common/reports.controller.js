@@ -6,8 +6,6 @@ const create = async (req) => {
     ...req.body,
     coffee_shop_id: req.params.id,
   };
-
-  console.log("body", body)
   return await reports.createReport(body);
 };
 
