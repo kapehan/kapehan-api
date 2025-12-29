@@ -162,7 +162,7 @@ const create = async (body) => {
             day_of_week: day,
             open_time: open || null,
             close_time: close || null,
-            is_closed: !isOpen,
+            is_closed: isOpen,
           })
         );
         if (openingData.length) {
@@ -330,6 +330,13 @@ const findAll = async (query, reply) => {
         .trim()
         .replace(/\s+/g, "_");
       where.city = normalizedCity;
+    }
+    // Add status filter
+    if (normalizedQuery.status) {
+      where.status = normalizedQuery.status;
+    } else {
+      // Exclude "pending" by default
+      where.status = { [Op.ne]: "pending" };
     }
 
     // Geo params
@@ -696,7 +703,7 @@ const findMenubyCoffeeShopSlug = async (params, reply) => {
           model: menu_item,
           as: "menuItems", // match model alias
           required: false,
-          attributes: ["id", "name", "description", "category", "has_variants"],
+          attributes: ["id", "name", "description", "category", "has_variants", "is_active"],
           include: [
             {
               model: menu_item_price,
@@ -717,6 +724,7 @@ const findMenubyCoffeeShopSlug = async (params, reply) => {
       description: mi.description,
       category: mi.category,
       has_variants: !!mi.has_variants,
+      is_active: mi.is_active,
       variants: (mi.prices || [])
         .filter((p) => p.size != null)
         .map((p) => ({ size: p.size, price: Number(p.price) })),
@@ -962,6 +970,256 @@ const getSuggestedCoffeeShops = async (query, reply) => {
   }
 };
 
+const updateStatus = async (params, reply) => {
+  try {
+    const { slug } = params;
+
+    if (!slug) {
+      return sendError("Slug is required");
+    }
+
+    // Find the coffee shop by slug
+    const shop = await coffee_shops.findOne({ where: { slug } });
+
+    if (!shop) {
+      return sendError("Coffee shop not found", 404);
+    }
+
+    // Toggle status: if pending -> active, if active -> pending
+    let newStatus = "pending";
+    if (shop.status === "pending") {
+      newStatus = "active";
+    } else if (shop.status === "active") {
+      newStatus = "pending";
+    }
+
+    shop.status = newStatus;
+    await shop.save();
+
+    // Optionally, fetch the updated shop with all includes if needed
+    // ...existing code for includes if you want to return full shop details...
+
+    return sendSuccess(
+      { slug: shop.slug, status: shop.status },
+      `Coffee shop status updated to ${shop.status}`
+    );
+  } catch (error) {
+    console.error("❌ Error updating coffee shop status:", error);
+    return sendError(`Failed to update coffee shop status: ${error.message}`);
+  }
+};
+
+const updateCoffeeShop = async (slug, body) => {
+  try {
+    if (!slug) {
+      return sendError("Slug is required");
+    }
+
+    // Find the coffee shop by slug
+    const coffeeShop = await coffee_shops.findOne({ where: { slug } });
+    if (!coffeeShop) {
+      return sendError("Coffee shop not found", 404);
+    }
+
+    // Prepare update data (reuse logic from create)
+    const data = Object.fromEntries(
+      Object.entries(body).map(([k, v]) => [k, v?.value ?? v])
+    );
+
+    // Only include fields that are present in the request body (do not overwrite with undefined/null)
+    const updateFields = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (
+        value !== undefined &&
+        value !== null &&
+        value !== "" // skip empty string fields
+      ) {
+        updateFields[key] = value;
+      }
+    }
+
+    // --------------------------
+    // Helper to safely parse arrays or JSON strings
+    // --------------------------
+    const parseArrayField = (val) => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      if (typeof val === "string") {
+        try {
+          const parsed = JSON.parse(val);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [val];
+        }
+      }
+      return [];
+    };
+
+    const amenitiesList = parseArrayField(data.amenities);
+    const vibesList = parseArrayField(data.vibes);
+    let paymentMethods = parseArrayField(data.payment);
+
+    // Normalize payment method names (e.g., "qr", "qr payment", "qr_payment" => "QR Payment")
+    paymentMethods = paymentMethods.map((type) => {
+      if (
+        typeof type === "string" &&
+        type.trim().toLowerCase().replace(/[\s_]+/g, "") === "qrpayment"
+      ) {
+        return "QR Payment";
+      }
+      return type;
+    });
+
+    // Fix: define openingHours from data or default to empty object
+    let openingHours = {};
+    if (typeof data.openingHours === "string") {
+      try {
+        openingHours = JSON.parse(data.openingHours);
+      } catch {
+        openingHours = {};
+      }
+    } else if (data.openingHours && typeof data.openingHours === "object") {
+      openingHours = data.openingHours;
+    }
+
+
+
+    // Transaction
+    const t = await sequelize.transaction();
+    try {
+      // Update only the provided fields
+      await coffeeShop.update(updateFields, { transaction: t });
+
+      const coffee_shop_id = coffeeShop.id;
+
+      // Helper function for bulk create
+      const bulkCreateIfNotEmpty = async (list, model, mapFn) => {
+        if (list.length) {
+          const items = list.map(mapFn);
+          await model.bulkCreate(items, { transaction: t });
+        }
+      };
+
+      // Remove and re-insert amenities
+      await coffee_shop_amenities.destroy({ where: { coffee_shop_id }, transaction: t });
+      await bulkCreateIfNotEmpty(
+        amenitiesList,
+        coffee_shop_amenities,
+        (value) => ({
+          coffee_shop_id,
+          amenity_value: String(value),
+        })
+      );
+
+      // Remove and re-insert vibes
+      await coffee_shop_vibes.destroy({ where: { coffee_shop_id }, transaction: t });
+      await bulkCreateIfNotEmpty(vibesList, coffee_shop_vibes, (value) => ({
+        coffee_shop_id,
+        vibe_value: String(value).replace(/^"|"$/g, "").toLowerCase(),
+      }));
+
+      // Remove and re-insert opening hours
+      await opening_hours.destroy({ where: { coffee_shop_id }, transaction: t });
+      console.log("🟡 openingHours raw value:", openingHours);
+      if (openingHours && Object.keys(openingHours).length) {
+        const openingData = Object.entries(openingHours).map(
+          ([day, { open, closed, isOpen }]) => ({
+            coffee_shop_id,
+            day_of_week: day,
+            open_time: open || null,
+            close_time: closed || null,
+            is_closed: isOpen,
+          })
+        );
+        console.log("💡 Opening hours to insert:", openingData);
+        if (openingData.length) {
+          try {
+            await opening_hours.bulkCreate(openingData, { transaction: t });
+            console.log("✅ Inserted opening hours");
+          } catch (err) {
+            console.error("❌ Failed to insert opening hours:", err);
+            await t.rollback();
+            return sendError(`Error updating coffee shop (opening hours): ${err.message}`);
+          }
+        }
+      } else {
+        console.log("⚠️ No opening hours data to insert");
+      }
+
+      // Remove and re-insert payment methods
+      await payment_method.destroy({ where: { coffee_shop_id }, transaction: t });
+      console.log("🟡 paymentMethods raw value:", paymentMethods);
+      if (paymentMethods && paymentMethods.length) {
+        console.log("💡 Payment methods to insert:", paymentMethods);
+        try {
+          await payment_method.bulkCreate(
+            paymentMethods.map((type) => ({
+              coffee_shop_id,
+              type: String(type), // do NOT lower case here, keep as is
+            })),
+            { transaction: t }
+          );
+          console.log("✅ Inserted payment methods");
+        } catch (err) {
+          console.error("❌ Failed to insert payment methods:", err);
+          await t.rollback();
+          return sendError(`Error updating coffee shop (payment methods): ${err.message}`);
+        }
+      } else {
+        console.log("⚠️ No payment methods data to insert");
+      }
+
+      await t.commit();
+
+      // Fetch updated shop with all includes
+      const updatedShop = await coffee_shops.findOne({
+        where: { id: coffee_shop_id },
+        include: [
+          {
+            model: coffee_shop_amenities,
+            as: "amenities",
+            required: false,
+            include: [
+              {
+                model: amenities,
+                as: "amenity",
+                attributes: ["amenity_name", "amenity_value"],
+              },
+            ],
+          },
+          {
+            model: coffee_shop_vibes,
+            as: "vibes",
+            required: false,
+            include: [
+              {
+                model: vibes,
+                as: "vibe",
+                attributes: ["vibe_name", "vibe_value"],
+              },
+            ],
+          },
+          { model: opening_hours, as: "opening_hours", required: false },
+          { model: cities, as: "city_info", required: false },
+          {
+            model: payment_method,
+            as: "payment_methods",
+            required: false,
+            attributes: ["type"],
+          },
+        ],
+      });
+
+      const formattedShop = formatCoffeeShopById(updatedShop);
+      return sendSuccess(formattedShop, "Coffee shop updated successfully");
+    } catch (err) {
+      await t.rollback();
+      return sendError(`Error updating coffee shop: ${err.message}`);
+    }
+  } catch (err) {
+    return sendError(`Error updating coffee shop: ${err.message}`);
+  }
+};
 
 module.exports = {
   create,
@@ -969,4 +1227,6 @@ module.exports = {
   findBySlug,
   findMenubyCoffeeShopSlug,
   getSuggestedCoffeeShops,
+  updateStatus,
+  updateCoffeeShop,
 };

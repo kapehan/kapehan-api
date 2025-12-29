@@ -64,11 +64,16 @@ const getReviewsByUserId = async (req) => {
   return await CoffeeShopReviews.getReviewsByUserId(userId);
 };
 
+const getAllReviews = async (req) => {
+  return await CoffeeShopReviews.getAllReviews();
+};
+
 module.exports = {
   create,
   findAll,
   findById,
   update,
   remove,
-  getReviewsByUserId
+  getReviewsByUserId,
+  getAllReviews
 };

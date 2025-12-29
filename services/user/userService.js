@@ -197,6 +197,8 @@ async function findUserByUsername(slug) {
   }
 }
 
+
+
 // Export CommonJS
 module.exports = {
   registerUser,
@@ -205,5 +207,5 @@ module.exports = {
   getUserData,
   updateUserData,
   refreshSession,
-  findUserByUsername
+  findUserByUsername,
 };

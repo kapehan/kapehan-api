@@ -41,6 +41,8 @@ const formatCoffeeShop = (shop) => {
     city: shop.coffee_shop_city || shop.city,
     rating: shop.rating,
     imageUrl: shop.image_url || shop.imageUrl,
+    status: shop.status,
+    slug: shop.slug,
     // ✅ Add formatted payment methods here
 
 
