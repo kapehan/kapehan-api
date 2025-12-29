@@ -48,6 +48,8 @@ async function buildServer() {
       "localhost:3000",
       "https://v1.kapehan.ph",
       "https://www.kapehan.ph",
+      "https://hq.kapehan.ph",
+      "https://www.hq.kapehan.ph"
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
