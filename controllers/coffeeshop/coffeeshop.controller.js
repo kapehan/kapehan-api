@@ -74,38 +74,28 @@ const updateCoffeeShop = async (req, reply) => {
   try {
     let body = req.body;
 
+    console.log("first body", body);
+
     // If file is present, determine if it's a new image or not
-    if (body.file?.value) {
+    if (body.file) {
       const file = body.file;
-      const fileValue = file.value;
-      console.log("File value received:", fileValue); // Log the file value
+      console.log("File received:", file); // Log the file object
 
       let buffer;
-      // Check if the file value is a URL string
-      if (typeof fileValue === "string" && fileValue.startsWith("https")) {
-        console.log("File value is a secure URL:", fileValue); // Log if file value is a secure URL
-        body = {
-          ...body,
-          image_url: fileValue,
-        };
+      // Check if the file has a `_buf` property (Buffer)
+      if (file._buf && Buffer.isBuffer(file._buf)) {
+        console.log("File has a _buf property (Buffer).");
+        buffer = file._buf;
       }
-      // Check if the file value is a Buffer (base64 or binary data)
-      else if (Buffer.isBuffer(fileValue)) {
-        console.log("File value is a Buffer."); // Log if file value is a Buffer
-        buffer = fileValue;
+      // Check if the file has a `toBuffer` method
+      else if (file.toBuffer && typeof file.toBuffer === "function") {
+        console.log("File has a toBuffer method.");
+        buffer = await file.toBuffer();
       }
-      // Check if the file value is base64 encoded
-      else if (
-        typeof fileValue === "string" &&
-        fileValue.startsWith("data:image")
-      ) {
-        console.log("File value is base64 encoded."); // Log if file value is base64
-        const base64Data = fileValue.split(",")[1]; // Extract base64 data
-        buffer = Buffer.from(base64Data, "base64");
-      }
-      // If the file value doesn't match any valid type
+      // If the file doesn't match any valid type
       else {
-        console.log("File value is not a valid upload or URL."); // Log if file value is invalid
+        console.log("File is not a valid upload or URL.");
+        buffer = null; // No valid file provided
       }
 
       // If we have a buffer, upload the image
@@ -125,7 +115,8 @@ const updateCoffeeShop = async (req, reply) => {
         };
       }
     } else {
-      console.log("No valid file value provided in the request."); // Log if no valid file value is provided
+      console.log("No valid file provided in the request. Skipping image update."); // Log if no valid file is provided
+      delete body.file; // Remove the file field to avoid unnecessary processing
     }
 
     const { slug } = req.params;
