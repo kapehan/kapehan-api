@@ -64,6 +64,11 @@ const getReviewsByUserId = async (req) => {
   return await CoffeeShopReviews.getReviewsByUserId(userId);
 };
 
+const getReviewsByOtherUserId = async (req) => {
+  const userId = req?.params?.id || null;
+  return await CoffeeShopReviews.getReviewsByUserId(userId);
+};
+
 const getAllReviews = async (req) => {
   return await CoffeeShopReviews.getAllReviews();
 };
@@ -75,5 +80,6 @@ module.exports = {
   update,
   remove,
   getReviewsByUserId,
-  getAllReviews
+  getAllReviews,
+  getReviewsByOtherUserId
 };
