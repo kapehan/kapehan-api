@@ -8,10 +8,17 @@ const { getOrCreateAnonymousUser } = require("../users/anonymous.controller");
  */
 async function registerUserController(req, reply) {
   try {
-    const { email, password, city, username, name } = req.body;
+    const { email, password, city, username, name, gender } = req.body;
     console.log("req body", req.body);
 
-    const data = await userService.registerUser(email, password, city, username, name);
+    const data = await userService.registerUser(
+      email,
+      password,
+      city,
+      username,
+      name,
+      gender
+    );
 
     const isProduction = process.env.NODE_ENV === "production";
     reply
@@ -39,7 +46,9 @@ async function registerUserController(req, reply) {
       expires: new Date(0),
     });
 
-    return reply.code(201).send(sendSuccess(data, "User registered successfully"));
+    return reply
+      .code(201)
+      .send(sendSuccess(data, "User registered successfully"));
   } catch (error) {
     console.error("Register user error:", error);
     return reply.code(400).send(sendError(error.message));
@@ -54,10 +63,13 @@ async function loginUserController(req, reply) {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return reply.code(400).send(sendError("Email and password are required fields."));
+      return reply
+        .code(400)
+        .send(sendError("Email and password are required fields."));
     }
 
-    const { isSuccess, accessToken, refreshToken, userId } = await userService.loginUser(email, password);
+    const { isSuccess, accessToken, refreshToken, userId } =
+      await userService.loginUser(email, password);
 
     if (!isSuccess) {
       return reply.code(401).send(sendError("Login failed."));
@@ -147,12 +159,24 @@ async function getUserDataController(req, reply) {
         const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
         const decoded = jwt.verify(accessToken, SUPABASE_JWT_SECRET);
         const userId = decoded.sub;
-        const supabaseResponse = await userService.getUserData(userId, accessToken);
-        const data = supabaseResponse?.data || supabaseResponse?.user || supabaseResponse || {};
+        const supabaseResponse = await userService.getUserData(
+          userId,
+          accessToken
+        );
+        const data =
+          supabaseResponse?.data ||
+          supabaseResponse?.user ||
+          supabaseResponse ||
+          {};
 
-        return reply.send(sendSuccess({ ...data, role: "user" }, "User successfully retrieved"));
+        return reply.send(
+          sendSuccess({ ...data, role: "user" }, "User successfully retrieved")
+        );
       } catch (err) {
-        console.warn("⚠️ Invalid access token, falling back to anonymous:", err.message);
+        console.warn(
+          "⚠️ Invalid access token, falling back to anonymous:",
+          err.message
+        );
       }
     }
 
@@ -162,6 +186,11 @@ async function getUserDataController(req, reply) {
     console.error("Get user data exception:", err);
     return reply.code(500).send(sendError(err.message));
   }
+}
+
+async function findUserByUsername(req, reply) {
+  const { slug } = req.params; // get slug from the URL param
+  return await userService.findUserByUsername(slug);
 }
 
 /**
@@ -220,10 +249,62 @@ async function refreshTokenController(req, reply) {
   }
 }
 
+async function loginUserAdminController(req, reply) {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return reply
+        .code(400)
+        .send(sendError("Email and password are required fields."));
+    }
+
+    const { isSuccess, accessToken, refreshToken, userId } =
+      await userService.loginAdminUser(email, password);
+
+    if (!isSuccess) {
+      return reply.code(401).send(sendError("Login failed."));
+    }
+
+    const isProduction = process.env.NODE_ENV === "production";
+
+    // Set cookies
+    reply
+      .setCookie("sb-access-token", accessToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "Strict" : "Lax",
+        path: "/",
+        maxAge: 60 * 60, // 1 hour
+      })
+      .setCookie("sb-refresh-token", refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "Strict" : "Lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+      });
+
+    // Clear anonymous token on login
+    reply.clearCookie("sb-access-anon-token", {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "Strict",
+      path: "/",
+    });
+
+    return reply.send(sendSuccess({ id: userId }, "Login successful"));
+  } catch (error) {
+    console.error("Login controller error:", error);
+    return reply.code(500).send(sendError("Server error: " + error.message));
+  }
+}
+
 module.exports = {
   registerUserController,
   loginUserController,
   logoutUserController,
   getUserDataController,
   refreshTokenController,
+  findUserByUsername,
 };

@@ -1,7 +1,9 @@
 // utils/authUtils.js
-import {supabaseAnon} from "../helpers/supabaseRoleConfig.js";
-import { AccessLevels } from "../utils/accessLevels.js";
-import { sendError } from "./response.js";
+const { supabaseAnon } = require("../helpers/supabaseRoleConfig.js");
+const { AccessLevels } = require("../utils/accessLevels.js");
+const { sendError } = require("./response.js");
+const db = require("../services/db.service.js");
+const { users } = db;
 
 // Helper: get user using provided access token via anon client
 async function getUserFromToken(token) {
@@ -32,7 +34,7 @@ async function refreshSession(accessToken, refreshToken) {
   }
 }
 
-export async function authenticateUser(request, reply) {
+async function authenticateUser(request, reply) {
   // 1) Determine required access first
   const requiredAccess = request.routeOptions?.config?.access || AccessLevels.GUEST;
 
@@ -57,21 +59,9 @@ export async function authenticateUser(request, reply) {
     // Try authenticated token (optional)
     if (accessToken) {
       try {
-        const extractRole = (userObj) => {
-          if (!userObj) return "anon";
-          if (userObj.app_metadata?.role) return userObj.app_metadata.role;
-          const rolesArray = userObj.app_metadata?.roles || [];
-          if (Array.isArray(rolesArray) && rolesArray.length > 0) {
-            if (rolesArray.includes("admin")) return "admin";
-            if (rolesArray.includes("coffee_shop_owner")) return "coffee_shop_owner";
-            return "user";
-          }
-          return "user";
-        };
         const { data, error } = await getUserFromToken(accessToken);
         if (!error && data?.user) {
-          const role = extractRole(data.user);
-          request.user = { isAuthenticated: true, role, id: data.user.id, user: data.user };
+          request.user = { isAuthenticated: true, role: "user", id: data.user.id, user: data.user };
           return;
         }
       } catch (err) {
@@ -95,27 +85,21 @@ export async function authenticateUser(request, reply) {
   }
 
   let user = null;
-  let role = "anon";
+  let dbRole = "anon";
 
-  // Extract role from Supabase user object
-  const extractRole = (userObj) => {
-    if (!userObj) return "anon";
-    if (userObj.app_metadata?.role) return userObj.app_metadata.role;
-    const rolesArray = userObj.app_metadata?.roles || [];
-    if (Array.isArray(rolesArray) && rolesArray.length > 0) {
-      if (rolesArray.includes("admin")) return "admin";
-      if (rolesArray.includes("coffee_shop_owner")) return "coffee_shop_owner";
-      return "user";
-    }
-    return "user"; // default
-  };
+  // Helper: fetch role from users table
+  async function getRoleFromUsersTable(userId) {
+    if (!userId) return "anon";
+    const userRecord = await users.findOne({ where: { id: userId } });
+    return userRecord?.role || "user";
+  }
 
   // 3a) Try access token if present
   if (accessToken) {
     const { data, error } = await getUserFromToken(accessToken);
     if (!error && data?.user) {
       user = data.user;
-      role = extractRole(user);
+      dbRole = await getRoleFromUsersTable(user.id);
     }
   }
 
@@ -124,7 +108,7 @@ export async function authenticateUser(request, reply) {
     const { data, error } = await refreshSession(accessToken, refreshToken);
     if (!error && data?.user && data?.session) {
       user = data.user;
-      role = extractRole(user);
+      dbRole = await getRoleFromUsersTable(user.id);
 
       // Only now issue new cookies (access and refresh) after a SUCCESSFUL refresh
       reply
@@ -159,27 +143,27 @@ export async function authenticateUser(request, reply) {
 
   // 4) Attach user and enforce role requirements
   request.user = {
-    isAuthenticated: role !== "anon",
-    role,
-    id: user?.id || null, // expose user id on the context for middleware logs/controllers
+    isAuthenticated: dbRole !== "anon",
+    role: dbRole,
+    id: user?.id || null,
     user,
   };
 
   switch (requiredAccess) {
     case AccessLevels.USER:
-      if (!["user", "admin", "coffee_shop_owner"].includes(role)) {
+      if (!["user", "admin", "coffee_shop_owner"].includes(dbRole)) {
         reply.code(403).send(sendError("User access required"));
         return;
       }
       return;
     case AccessLevels.OWNER:
-      if (role !== "coffee_shop_owner") {
+      if (!["coffee_shop_owner", "admin"].includes(dbRole)) {
         reply.code(403).send(sendError("Owner access required"));
         return;
       }
       return;
     case AccessLevels.ADMIN:
-      if (role !== "admin") {
+      if (dbRole !== "admin") {
         reply.code(403).send(sendError("Admin access required"));
         return;
       }
@@ -188,3 +172,5 @@ export async function authenticateUser(request, reply) {
       return;
   }
 }
+
+module.exports = { authenticateUser };

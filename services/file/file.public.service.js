@@ -8,7 +8,13 @@ async function uploadPublicImage(fileBuffer, fileName, filepath) {
       throw new Error("fileName must be a string");
     }
 
-    const sanitize = (name) => name.replace(/\s+/g, "-").toLowerCase();
+    // Sanitize filename: replace spaces, remove non-ASCII, remove special chars
+    const sanitize = (name) =>
+      name
+        .replace(/\s+/g, "-")
+        .replace(/[^a-zA-Z0-9\-_.]/g, "") // keep only safe chars
+        .toLowerCase();
+
     const upfilename = `${Date.now()}-${sanitize(fileName)}`;
     const upfilePath = `${filepath}/${upfilename}`;
 

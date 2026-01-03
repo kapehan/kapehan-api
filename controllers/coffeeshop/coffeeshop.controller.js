@@ -6,13 +6,25 @@ const {
 
 const create = async (req, reply) => {
   try {
+    console.log("req body", req.body);
+
     const file = req.body.file;
-    const buffer = await file.toBuffer();
+    let buffer;
+    // Support both Buffer and file object with toBuffer
+    if (Buffer.isBuffer(file)) {
+      buffer = file;
+    } else if (file && typeof file.toBuffer === "function") {
+      buffer = await file.toBuffer();
+    } else if (file && file.buffer) {
+      buffer = file.buffer;
+    } else {
+      throw new Error("Invalid file object: missing buffer or toBuffer()");
+    }
     const formData = req.body;
     const filepath = "uploads";
     const upload_res = await uploadPublicImage(
       buffer,
-      formData.name.value,
+      formData.name?.value || formData.name,
       file.mimetype,
       filepath
     );
@@ -35,7 +47,6 @@ const create = async (req, reply) => {
 };
 
 const findAll = async (req) => {
-  console.log("req", req.params);
   return await coffeeshop.findAll(req.query);
 };
 
@@ -49,4 +60,86 @@ const findMenubyCoffeeShopSlug = async (req) => {
   return await coffeeshop.findMenubyCoffeeShopSlug({ slug });
 };
 
-module.exports = { create, findAll, findBySlug, findMenubyCoffeeShopSlug };
+const getSuggestedCoffeeShop = async (req) => {
+  return await coffeeshop.getSuggestedCoffeeShops(req.query);
+};
+
+const updateCafeStatus = async (req) => {
+  const { slug } = req.params; // get slug from the URL param
+
+  return await coffeeshop.updateStatus({ slug });
+};
+
+const updateCoffeeShop = async (req, reply) => {
+  try {
+    let body = req.body;
+
+    console.log("first body", body);
+
+    // If file is present, determine if it's a new image or not
+    if (body.file) {
+      const file = body.file;
+      console.log("File received:", file); // Log the file object
+
+      let buffer;
+      // Check if the file has a `_buf` property (Buffer)
+      if (file._buf && Buffer.isBuffer(file._buf)) {
+        console.log("File has a _buf property (Buffer).");
+        buffer = file._buf;
+      }
+      // Check if the file has a `toBuffer` method
+      else if (file.toBuffer && typeof file.toBuffer === "function") {
+        console.log("File has a toBuffer method.");
+        buffer = await file.toBuffer();
+      }
+      // If the file doesn't match any valid type
+      else {
+        console.log("File is not a valid upload or URL.");
+        buffer = null; // No valid file provided
+      }
+
+      // If we have a buffer, upload the image
+      if (buffer) {
+        console.log("Uploading image..."); // Log before uploading
+        const filepath = "uploads";
+        const upload_res = await uploadPublicImage(
+          buffer,
+          body.name?.value || body.name,
+          file.mimetype,
+          filepath
+        );
+        console.log("Upload response:", upload_res); // Log the upload response
+        body = {
+          ...body,
+          image_url: upload_res.url,
+        };
+      }
+    } else {
+      console.log("No valid file provided in the request. Skipping image update."); // Log if no valid file is provided
+      delete body.file; // Remove the file field to avoid unnecessary processing
+    }
+
+    const { slug } = req.params;
+    console.log("Updating coffee shop with slug:", slug); // Log the slug being updated
+    console.log("Final body for update:", body); // Log the final body being sent for update
+
+    const data = await coffeeshop.updateCoffeeShop(slug, body);
+    console.log("Update response:", data); // Log the response from the update
+    reply.send(data);
+  } catch (err) {
+    console.log("Error during update:", err); // Log the error
+    reply
+      .code(500)
+      .send(sendError("Failed to update coffee shop.", err.message));
+  }
+};
+
+module.exports = {
+  create,
+  findAll,
+  findBySlug,
+  findMenubyCoffeeShopSlug,
+  getSuggestedCoffeeShop,
+  updateCafeStatus,
+  updateCoffeeShop,
+};

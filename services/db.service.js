@@ -1,40 +1,32 @@
 const { Sequelize } = require("sequelize");
 const config = require("../configs/sql.config");
-const model = require("../models"); // your models/index.js
+const model = require("../models");
 
-// Initialize sequelize instance
+const isServerless = !!process.env.VERCEL;
+
 const sequelize = new Sequelize(config.database, config.user, config.password, {
   host: config.host,
   dialect: "postgres",
   timezone: "+08:00",
-  port: 5432,
-  define: {
-    timestamps: true,
+  port: config.port ?? 5432, // set pooled port here if using Supabase pooling (e.g., 6543)
+  define: { timestamps: true },
+  pool: {
+    max: isServerless ? 1 : 5,
+    min: isServerless ? 0 : 1,
+    idle: 10000,
+    acquire: 20000,
+    evict: 1000,
   },
   dialectOptions: {
     decimalNumbers: true,
-    ssl: {
-      require: true,
-      rejectUnauthorized: false,
-    },
+    keepAlive: true,
+    ssl: { require: true, rejectUnauthorized: false },
   },
 });
 
-// Test DB connection
-sequelize
-  .authenticate()
-  .then(() => {
-    console.log("✅ Connected to database");
-  })
-  .catch((error) => {
-    console.error("❌ Unable to connect:", error);
-  });
-
-// Initialize models
 const models = model(sequelize);
 
-// Debug log: list all model keys
+// Debug log
 console.log("✅ Models initialized:", Object.keys(models));
 
-// Export sequelize + all models
 module.exports = { sequelize, ...models };

@@ -59,10 +59,27 @@ const remove = async (req) => {
   return await CoffeeShopReviews.remove(reviewId, req.user);
 };
 
+const getReviewsByUserId = async (req) => {
+  const userId = req?.user?.id || null;
+  return await CoffeeShopReviews.getReviewsByUserId(userId);
+};
+
+const getReviewsByOtherUserId = async (req) => {
+  const userId = req?.params?.id || null;
+  return await CoffeeShopReviews.getReviewsByUserId(userId);
+};
+
+const getAllReviews = async (req) => {
+  return await CoffeeShopReviews.getAllReviews();
+};
+
 module.exports = {
   create,
   findAll,
   findById,
   update,
   remove,
+  getReviewsByUserId,
+  getAllReviews,
+  getReviewsByOtherUserId
 };

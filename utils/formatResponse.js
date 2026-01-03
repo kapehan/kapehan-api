@@ -7,12 +7,14 @@ dayjs.extend(timezone);
 
 const formatCoffeeShop = (shop) => {
   const now = dayjs().tz("Asia/Manila");
-  const today = now.format("dddd"); // e.g., "Monday"
+  const todayLower = now.format("dddd").toLowerCase();
   let isOpen = false;
 
-  // ✅ Determine if shop is currently open
+  // ✅ Determine if shop is currently open (case-insensitive day match)
   if (shop.opening_hours && shop.opening_hours.length > 0) {
-    const todayHours = shop.opening_hours.find((h) => h.day_of_week === today);
+    const todayHours = shop.opening_hours.find(
+      (h) => (h.day_of_week || "").toLowerCase() === todayLower
+    );
 
     if (
       todayHours &&
@@ -39,10 +41,13 @@ const formatCoffeeShop = (shop) => {
     city: shop.coffee_shop_city || shop.city,
     rating: shop.rating,
     imageUrl: shop.image_url || shop.imageUrl,
+    status: shop.status,
+    slug: shop.slug,
     // ✅ Add formatted payment methods here
 
+
     vibes: (shop.coffee_shop_vibes || shop.vibes || [])
-      .map((v) => v?.vibe?.vibe_name)
+      .map((v) => v?.vibe?.vibe_name || v?.vibe_value)
       .filter(Boolean),
 
     amenities: (shop.coffee_shop_amenities || shop.amenities || [])
@@ -55,12 +60,14 @@ const formatCoffeeShop = (shop) => {
 
 const formatCoffeeShopById = (shop) => {
   const now = dayjs().tz("Asia/Manila");
-  const today = now.format("dddd"); // e.g., "Monday"
+  const todayLower = now.format("dddd").toLowerCase();
   let isOpen = false;
 
-  // ✅ Determine if shop is currently open
+  // ✅ Determine if shop is currently open (case-insensitive day match)
   if (shop.opening_hours && shop.opening_hours.length > 0) {
-    const todayHours = shop.opening_hours.find((h) => h.day_of_week === today);
+    const todayHours = shop.opening_hours.find(
+      (h) => (h.day_of_week || "").toLowerCase() === todayLower
+    );
 
     if (
       todayHours &&
@@ -93,6 +100,8 @@ const formatCoffeeShopById = (shop) => {
     facebook: shop.facebook || [],
     instagram: shop.instagram,
     review_count: shop.review_count || 0,
+    latitude: shop.latitude,
+    longitude: shop.longitude, // fix incorrect mapping
 
     // ✅ Add formatted payment methods here
     payment_methods: (shop.payment_methods || []).map((pm) => ({
@@ -122,7 +131,7 @@ const formatCoffeeShopById = (shop) => {
     })),
 
     vibes: (shop.coffee_shop_vibes || shop.vibes || [])
-      .map((v) => v?.vibe?.vibe_name)
+      .map((v) => v?.vibe?.vibe_name || v?.vibe_value)
       .filter(Boolean),
 
     amenities: (shop.coffee_shop_amenities || shop.amenities || [])

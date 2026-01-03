@@ -1,4 +1,4 @@
-const { DataTypes } = require("sequelize");
+const { DataTypes, Op } = require("sequelize");
 
 module.exports = (sequelize) => {
   // --------------------
@@ -17,7 +17,9 @@ module.exports = (sequelize) => {
       city: { type: DataTypes.STRING }, // references cities.city_value
       role: { type: DataTypes.STRING, defaultValue: "user" },
       username: { type: DataTypes.STRING, allowNull: false, unique: true },
+      gender: { type: DataTypes.STRING },
       created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+      review_count: { type: DataTypes.BIGINT, allowNull: true },
     },
     {
       tableName: "users",
@@ -72,10 +74,10 @@ module.exports = (sequelize) => {
       slug: { type: DataTypes.STRING, allowNull: false },
       description: { type: DataTypes.TEXT },
       address: { type: DataTypes.TEXT },
-      review_count: {type: DataTypes.BIGINT},
+      review_count: { type: DataTypes.BIGINT },
       city: { type: DataTypes.STRING },
       email: { type: DataTypes.STRING },
-      rating: { type: DataTypes.DECIMAL(3, 2), defaultValue: 0 },
+      rating: { type: DataTypes.DECIMAL(3, 2), defaultValue: 5 },
       image_url: { type: DataTypes.TEXT },
       founded: { type: DataTypes.DATE },
       status: { type: DataTypes.STRING, defaultValue: "pending" },
@@ -301,6 +303,11 @@ module.exports = (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
       },
+      is_active: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+      },
+
       created_at: {
         type: DataTypes.DATE,
         allowNull: true,
@@ -507,6 +514,48 @@ module.exports = (sequelize) => {
       updatedAt: "updated_at"     
   });
 
+  const CoffeeShopReport = sequelize.define(
+    "coffee_shop_reports",
+    {
+      id: {
+        type: DataTypes.BIGINT,
+        autoIncrement: true,
+        primaryKey: true,
+        allowNull: false,
+      },
+      created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+      },
+      coffee_shop_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: { tableName: "coffee_shops", schema: "kapehan" },
+          key: "id",
+        },
+      },
+      report_type: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      description: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      status: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        defaultValue: "Y",
+      },
+    },
+    {
+      tableName: "coffee_shop_reports",
+      schema: "kapehan",
+      timestamps: false,
+    }
+  );
 
   // --------------------
   // Associations
@@ -663,6 +712,7 @@ module.exports = (sequelize) => {
     CoffeeShopReview,
     UserLocationLog,
     RecentUserLocationSearch,
-    Otp
+    Otp,
+    CoffeeShopReport,
   };
 };
