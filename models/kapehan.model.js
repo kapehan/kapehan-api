@@ -498,6 +498,22 @@ module.exports = (sequelize) => {
     }
   );
 
+  const Otp = sequelize.define("otp", {
+      user_id: DataTypes.UUID,
+      otp_hash: DataTypes.STRING,
+      type: DataTypes.STRING,
+      attempts: { type: DataTypes.INTEGER, defaultValue: 0 },
+      expires_at: DataTypes.DATE,
+      used_at: DataTypes.DATE,
+    },
+    {
+      tableName: "otp",
+      schema: "kapehan",
+      timestamps: true,            
+      createdAt: "created_at",     
+      updatedAt: "updated_at"     
+  });
+
   const CoffeeShopReport = sequelize.define(
     "coffee_shop_reports",
     {
@@ -696,6 +712,7 @@ module.exports = (sequelize) => {
     CoffeeShopReview,
     UserLocationLog,
     RecentUserLocationSearch,
+    Otp,
     CoffeeShopReport,
   };
 };
