@@ -26,6 +26,7 @@ const {
   boundingBox,
   annotateAndFilterByDistance,
 } = require("../../utils/geo");
+const mailerService = require("../common/mailer.service");
 const { isOpenFromRow } = require("../../utils/openingHours");
 
 // Simple in-memory cache (consider Redis for production)
