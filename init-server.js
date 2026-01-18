@@ -123,7 +123,7 @@ if (!isServerless) {
   (async () => {
     try {
       const server = await createServer();
-      server.listen({ port: 4000, host: "localhost" }, (err, address) => {
+      server.listen({ port: process.env.PORT || 8080, host: process.env.HOST || "0.0.0.0" }, (err, address) => {
         if (err) {
           server.log.error(err);
           process.exit(1);
