@@ -12,5 +12,5 @@ RUN npm install -g pnpm && pnpm install
 COPY . .
 
 # Expose the port and start the backend server
-EXPOSE 8080
+EXPOSE 3000
 CMD ["pnpm", "run", "start"]
