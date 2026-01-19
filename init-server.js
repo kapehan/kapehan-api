@@ -50,7 +50,8 @@ async function buildServer() {
       "https://www.kapehan.ph",
       "https://hq.kapehan.ph",
       "https://www.hq.kapehan.ph",
-      "http://kapehan.fly.dev/"
+      "http://kapehan-front-end.fly.dev",
+      "https://kapehan-front-end.fly.dev"
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
