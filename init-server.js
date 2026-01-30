@@ -1,3 +1,5 @@
+// init-server.js (updated for Fly/Docker public deployment)
+
 const Fastify = require("fastify");
 const cors = require("@fastify/cors");
 const { sequelize } = require("./services/db.service");
@@ -7,14 +9,12 @@ const cookie = require("@fastify/cookie");
 let cachedServer = null;
 let dbInitialized = false;
 
-// Detect serverless (Vercel) and production
-const isServerless = !!process.env.VERCEL;
-const isProd = isServerless || process.env.NODE_ENV === "production";
+// You're no longer using Vercel/serverless
+const isServerless = false;
+const isProd = process.env.NODE_ENV === "production";
 
 console.log(
-  `[Kapehan] Mode: ${isProd ? "PRODUCTION" : "DEVELOPMENT"} | Platform: ${
-    isServerless ? "SERVERLESS (Vercel)" : "NODE"
-  }`
+  `[Kapehan] Mode: ${isProd ? "PRODUCTION" : "DEVELOPMENT"} | Platform: NODE`
 );
 
 // Database initialization
@@ -23,11 +23,13 @@ async function initDatabase() {
   try {
     await sequelize.authenticate();
     console.log("✅ Connected to Supabase");
-    // Sync ONLY in local dev (never in prod or serverless)
-    if (!isServerless && !isProd) {
+
+    // Sync ONLY in local dev (never in prod)
+    if (!isProd) {
       await sequelize.sync();
       console.log("✅ Tables synced (dev only)");
     }
+
     dbInitialized = true;
   } catch (err) {
     console.error("❌ Database error:", err);
@@ -37,19 +39,20 @@ async function initDatabase() {
 
 // Build Fastify instance and register plugins/routes ONCE
 async function buildServer() {
-  const fastify = Fastify({ logger: !isServerless });
+  const fastify = Fastify({ logger: true });
 
-  // Only essential plugins
   await fastify.register(cors, {
     origin: [
-      "http://localhost:3000",
+      "http://localhost:3001",
       "http://127.0.0.1:3000",
+      "http://localhost:3000",
       "https://kapehan.ph",
-      "localhost:3000",
-      "https://v1.kapehan.ph",
       "https://www.kapehan.ph",
+      "https://v1.kapehan.ph",
       "https://hq.kapehan.ph",
-      "https://www.hq.kapehan.ph"
+      "https://www.hq.kapehan.ph",
+      // add your Fly frontend domain here if you have one, e.g.
+      // "https://kapehan-frontend.fly.dev",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
@@ -59,10 +62,10 @@ async function buildServer() {
   await fastify.register(multipart, { attachFieldsToBody: true });
   await fastify.register(cookie, { parseOptions: {} });
 
-  // Tune database pool (keep minimal on serverless)
+  // Pool tuning (non-serverless)
   if (sequelize?.connectionManager?.pool) {
-    const max = isServerless ? 1 : 5;
-    const min = isServerless ? 0 : 1;
+    const max = 5;
+    const min = 1;
     sequelize.connectionManager.pool.max = max;
     sequelize.connectionManager.pool.min = min;
     sequelize.options.pool = {
@@ -100,10 +103,11 @@ async function buildServer() {
       message: error?.message,
       stack: error?.stack,
     });
-    if (!isServerless && fastify.log?.error) fastify.log.error(error);
+
     reply.code(error.statusCode || 500).send({
       error: error.message || "Internal Server Error",
-      stack: error.stack,
+      // consider removing stack in prod:
+      stack: isProd ? undefined : error.stack,
     });
   });
 
@@ -118,40 +122,16 @@ async function createServer() {
   return cachedServer;
 }
 
-// Start local server if not serverless (regardless of NODE_ENV)
-if (!isServerless) {
-  (async () => {
-    try {
-      const server = await createServer();
-      server.listen({ port: 4000, host: "localhost" }, (err, address) => {
-        if (err) {
-          server.log.error(err);
-          process.exit(1);
-        }
-        console.log(`🌐 Server running at ${address}`);
-      });
-    } catch (err) {
-      console.error("❌ Failed to start server:", err);
-      process.exit(1);
-    }
-  })();
-}
-
-// Vercel handler
-module.exports = async (req, res) => {
+// Start server (Fly/Docker expects 0.0.0.0 and PORT)
+(async () => {
   try {
     const server = await createServer();
-    server.server.emit("request", req, res);
-    await new Promise((resolve, reject) => {
-      res.on("finish", resolve);
-      res.on("error", reject);
-    });
+    const port = Number(process.env.PORT || 3000);
+
+    await server.listen({ port, host: "0.0.0.0" });
+    console.log(`🌐 Server running at http://0.0.0.0:${port}`);
   } catch (err) {
-    console.error("❌ Serverless handler error:", err?.stack || err);
-    if (!res.writableEnded) {
-      res.statusCode = 500;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: err?.message || "Internal Server Error", stack: err?.stack }));
-    }
+    console.error("❌ Failed to start server:", err);
+    process.exit(1);
   }
-};
+})();
