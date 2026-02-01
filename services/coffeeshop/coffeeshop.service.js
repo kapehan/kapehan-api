@@ -26,6 +26,7 @@ const {
   boundingBox,
   annotateAndFilterByDistance,
 } = require("../../utils/geo");
+const mailerService = require("../common/mailer.service");
 const { isOpenFromRow } = require("../../utils/openingHours");
 
 // Simple in-memory cache (consider Redis for production)
@@ -264,7 +265,23 @@ const create = async (body) => {
       } else {
         console.log("⚠️ No menu data to insert");
       }
-
+      
+      const { email, name } = data;
+      console.log("email",email);
+      const today = new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      const {html, text} = coffeeShopUnderReviewTemplate(name, today);
+      await mailerService.sendEmail(
+          email,
+          name,
+          "Coffeshop Registration",
+          html,
+          text // text version
+      );
+      
       await t.commit();
       console.log("✅ Transaction committed successfully");
       return { coffee_shop_id };
