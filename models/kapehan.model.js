@@ -76,7 +76,6 @@ module.exports = (sequelize) => {
       address: { type: DataTypes.TEXT },
       review_count: { type: DataTypes.BIGINT },
       city: { type: DataTypes.STRING },
-      email: { type: DataTypes.STRING },
       rating: { type: DataTypes.DECIMAL(3, 2), defaultValue: 5 },
       image_url: { type: DataTypes.TEXT },
       founded: { type: DataTypes.DATE },
